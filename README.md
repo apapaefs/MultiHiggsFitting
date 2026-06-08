@@ -51,7 +51,22 @@ mg5_path = "/mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15"
 
 If MG5 is somewhere else, edit `mg5_path` in the config you are using.
 
-Install the UFO model used by the starter configs. In the old 4H area this is
+Install the UFO model used by the starter configs. The repository includes a
+clean copy under `models/loop_sm_c3d4`; copy or symlink it into the MG5 model
+directory:
+
+```bash
+cp -a models/loop_sm_c3d4 /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/
+```
+
+The repository also vendors `heft_loop_sm_restricted5` from
+`https://gitlab.com/apapaefs/multihiggs_loop_sm` at commit `99ba5ee90669`:
+
+```bash
+cp -a models/heft_loop_sm_restricted5 /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/
+```
+
+If you are reproducing the old 4H area and prefer the archived copy, it is also
 available as `loop_sm_c3d4.tar.gz`:
 
 ```bash
@@ -272,3 +287,12 @@ integral is multiplicity times the event cross section.
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+## References
+
+- Original multi-Higgs loop-model repository:
+  `https://gitlab.com/apapaefs/multihiggs_loop_sm`
+- Andreas Papaefstathiou and Gilberto Tetlalmatzi-Xolocotzi,
+  "Multi-Higgs boson production with anomalous interactions at current and
+  future proton colliders", JHEP 06 (2024) 124,
+  arXiv:2312.13562, doi:10.1007/JHEP06(2024)124.
