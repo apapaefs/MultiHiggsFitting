@@ -46,10 +46,19 @@ def design_matrix(values: list[tuple[float, ...]], config: ProjectConfig) -> np.
     return np.asarray([chebyshev_row(point, config) for point in values], dtype=float)
 
 
-def univariate_chebyshev_scan_polynomial(order: int, coupling: CouplingConfig) -> np.ndarray:
+def univariate_chebyshev_polynomial(
+    order: int,
+    coupling: CouplingConfig,
+    variable: str,
+) -> np.ndarray:
     xmin, xmax = coupling.fit_range
     a = 2.0 / (xmax - xmin)
-    b = (2.0 * coupling.fit_offset - xmin - xmax) / (xmax - xmin)
+    if variable == "fit":
+        b = -(xmin + xmax) / (xmax - xmin)
+    elif variable == "scan":
+        b = (2.0 * coupling.fit_offset - xmin - xmax) / (xmax - xmin)
+    else:
+        raise ValueError(f"Unsupported monomial variable convention: {variable}")
     x_poly = np.asarray([b, a], dtype=float)
     if order == 0:
         return np.asarray([1.0], dtype=float)
@@ -63,14 +72,17 @@ def univariate_chebyshev_scan_polynomial(order: int, coupling: CouplingConfig) -
     return current
 
 
-def monomial_transform(config: ProjectConfig) -> tuple[list[tuple[int, ...]], np.ndarray]:
+def monomial_transform(
+    config: ProjectConfig,
+    variable: str = "scan",
+) -> tuple[list[tuple[int, ...]], np.ndarray]:
     expansions: list[dict[tuple[int, ...], float]] = []
     all_powers: set[tuple[int, ...]] = set()
     ndims = len(config.couplings)
     for term in config.fit.terms:
         expansion: dict[tuple[int, ...], float] = {tuple([0] * ndims): 1.0}
         for dim, (power, coupling) in enumerate(zip(term, config.couplings)):
-            poly = univariate_chebyshev_scan_polynomial(power, coupling)
+            poly = univariate_chebyshev_polynomial(power, coupling, variable)
             next_expansion: dict[tuple[int, ...], float] = {}
             for powers, coeff in expansion.items():
                 for out_power, out_coeff in enumerate(poly):
@@ -82,7 +94,14 @@ def monomial_transform(config: ProjectConfig) -> tuple[list[tuple[int, ...]], np
         expansions.append(expansion)
         all_powers.update(expansion)
 
-    powers_list = sorted(all_powers, key=lambda powers: (sum(powers), powers))
+    preferred = []
+    seen_preferred = set()
+    for term in config.fit.terms:
+        if term in all_powers and term not in seen_preferred:
+            preferred.append(term)
+            seen_preferred.add(term)
+    remaining = sorted(all_powers - seen_preferred, key=lambda powers: (sum(powers), powers))
+    powers_list = preferred + remaining
     row_index = {powers: index for index, powers in enumerate(powers_list)}
     transform = np.zeros((len(powers_list), len(config.fit.terms)), dtype=float)
     for col, expansion in enumerate(expansions):
@@ -98,15 +117,20 @@ def monomial_basis(values: tuple[float, ...], powers: list[tuple[int, ...]]) -> 
     )
 
 
-def monomial_labels(config: ProjectConfig, powers: list[tuple[int, ...]]) -> list[str]:
+def monomial_labels(
+    config: ProjectConfig,
+    powers: list[tuple[int, ...]],
+    variable: str = "scan",
+) -> list[str]:
     labels = []
     for term in powers:
         pieces = []
         for coupling, power in zip(config.couplings, term):
+            name = coupling.fit_name if variable == "fit" else coupling.name
             if power == 1:
-                pieces.append(coupling.name)
+                pieces.append(name)
             elif power > 1:
-                pieces.append(f"{coupling.name}^{power}")
+                pieces.append(f"{name}^{power}")
         labels.append("*".join(pieces) if pieces else "1")
     return labels
 

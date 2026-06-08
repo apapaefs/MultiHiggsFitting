@@ -8,10 +8,11 @@ output = "gg_hhh_c3d4"
 [scan]
 run_number = "2"
 energy_tev = 14.0
-nevents = 1
+nevents = 10000
 strategy = "chebyshev_lobatto"
 sort = "sm_first"
 skip_existing = true
+no_cuts = true
 
 [scan.madgraph]
 accuracy = 0.02

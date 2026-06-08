@@ -5,7 +5,7 @@ import csv
 from pathlib import Path
 
 from .config import load_config
-from .fit import fit_results_csv
+from .fit import fit_results_csv, format_polynomial_report
 from .grid import generate_scan_points
 from .histograms import write_histogram_csv
 from .madgraph import run_madevent, run_mg5, write_madevent_card, write_process_card
@@ -34,15 +34,35 @@ def main(argv: list[str] | None = None) -> int:
     collect_parser.add_argument("-o", "--output", type=Path)
     collect_parser.add_argument("--run-number", action="append", dest="run_numbers")
     collect_parser.add_argument("--exclude-run-number", action="append", dest="exclude_run_numbers")
+    collect_parser.add_argument(
+        "--min-events",
+        type=int,
+        help="Override the configured event-count minimum; use 0 to disable the filter",
+    )
 
     hist_parser = add_config_command(subparsers, "hist", "Histogram configured LHE observables")
     hist_parser.add_argument("-o", "--output", type=Path)
     hist_parser.add_argument("--observable", action="append", dest="observables")
     hist_parser.add_argument("--run-number", action="append", dest="run_numbers")
+    hist_parser.add_argument(
+        "--min-events",
+        type=int,
+        help="Override the configured event-count minimum; use 0 to disable the filter",
+    )
 
     fit_parser = add_config_command(subparsers, "fit", "Fit cross sections or histogram bins")
     fit_parser.add_argument("-i", "--input", type=Path)
     fit_parser.add_argument("-o", "--output", type=Path)
+    fit_parser.add_argument(
+        "--min-events",
+        type=int,
+        help="Only fit CSV rows with event_count greater than or equal to this value",
+    )
+    fit_parser.add_argument(
+        "--print-polynomial",
+        action="store_true",
+        help="Print old-style polynomial coefficient blocks after fitting",
+    )
 
     args = parser.parse_args(argv)
     config = load_config(args.config)
@@ -54,11 +74,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         return command_scan(config, args.output, args.max_runs, args.force, args.run)
     if args.command == "collect":
-        return command_collect(config, args.output, args.run_numbers, args.exclude_run_numbers)
+        return command_collect(
+            config,
+            args.output,
+            args.run_numbers,
+            args.exclude_run_numbers,
+            args.min_events,
+        )
     if args.command == "hist":
-        return command_hist(config, args.output, args.observables, args.run_numbers)
+        return command_hist(config, args.output, args.observables, args.run_numbers, args.min_events)
     if args.command == "fit":
-        return command_fit(config, args.input, args.output)
+        return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events)
     raise AssertionError(args.command)
 
 
@@ -111,7 +137,9 @@ def command_scan(
     output = output or default_path(config, config.name + "_scan.dcmd")
     _, selected = write_madevent_card(config, points, output, max_runs=max_runs, force=force)
     print(f"Configured scan points: {len(points)}")
-    print(f"Selected missing points: {len(selected)}")
+    print(f"Events per selected run: {config.scan.nevents}")
+    print(f"Existing-run event minimum: {config.scan.event_minimum}")
+    print(f"Selected points to run: {len(selected)}")
     print(f"Wrote madevent command file to {output}")
     if selected:
         print("First selected points:")
@@ -130,11 +158,13 @@ def command_collect(
     output: Path | None,
     run_numbers: list[str] | None,
     exclude_run_numbers: list[str] | None,
+    min_events: int | None,
 ) -> int:
     results = discover_completed_runs(
         config,
         run_numbers=None if run_numbers is None else set(run_numbers),
         exclude_run_numbers=None if exclude_run_numbers is None else set(exclude_run_numbers),
+        min_events=min_events,
     )
     output = output or default_path(config, "xsecs.csv")
     write_results_csv(config, results, output)
@@ -147,6 +177,7 @@ def command_hist(
     output: Path | None,
     observables: list[str] | None,
     run_numbers: list[str] | None,
+    min_events: int | None,
 ) -> int:
     output = output or default_path(config, "histograms.csv")
     write_histogram_csv(
@@ -154,15 +185,22 @@ def command_hist(
         output,
         observable_names=None if observables is None else set(observables),
         run_numbers=None if run_numbers is None else set(run_numbers),
+        min_events=min_events,
     )
     print(f"Wrote histograms to {output}")
     return 0
 
 
-def command_fit(config, input_path: Path | None, output: Path | None) -> int:
+def command_fit(
+    config,
+    input_path: Path | None,
+    output: Path | None,
+    print_polynomial: bool,
+    min_events: int | None,
+) -> int:
     input_path = input_path or default_path(config, "xsecs.csv")
     output = output or default_path(config, "fit.json")
-    results = fit_results_csv(config, input_path, output)
+    results = fit_results_csv(config, input_path, output, min_events=min_events)
     print(f"Wrote {len(results)} fit result(s) to {output}")
     for result in results[:10]:
         print(
@@ -171,4 +209,8 @@ def command_fit(config, input_path: Path | None, output: Path | None) -> int:
         )
     if len(results) > 10:
         print(f"... {len(results) - 10} additional bins")
+    if print_polynomial:
+        for result in results:
+            print()
+            print(format_polynomial_report(config, result))
     return 0

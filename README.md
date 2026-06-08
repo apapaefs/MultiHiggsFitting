@@ -25,6 +25,75 @@ python3 -m multihiggs grid configs/gg_hhh_c3d4.toml
 The code expects `numpy` and `tomli` on Python 3.10. They are declared in
 `pyproject.toml`.
 
+## MadGraph Setup
+
+Install the basic build tools used by MG5/aMC and generated matrix elements:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 gfortran g++ make wget tar gzip
+```
+
+Install or unpack MG5/aMC. If you are reproducing the original local setup,
+there is already a tarball under `/mnt/ssd2/Projects/4H`:
+
+```bash
+mkdir -p /mnt/ssd2/Projects/4H
+tar -xzf /mnt/ssd2/Projects/4H/LTS_MG5aMC_v3.5.15.tgz \
+  -C /mnt/ssd2/Projects/4H
+```
+
+The example configs assume:
+
+```toml
+mg5_path = "/mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15"
+```
+
+If MG5 is somewhere else, edit `mg5_path` in the config you are using.
+
+Install the UFO model used by the starter configs. In the old 4H area this is
+available as `loop_sm_c3d4.tar.gz`:
+
+```bash
+tar -xzf /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/loop_sm_c3d4.tar.gz \
+  -C /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models
+```
+
+Check that MG5 can import the model:
+
+```bash
+cd /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15
+./bin/mg5_aMC
+```
+
+Inside MG5:
+
+```text
+import model loop_sm_c3d4
+display particles
+quit
+```
+
+Loop-induced multi-Higgs runs need the loop libraries available at runtime.
+The pipeline automatically adds common MG5 `HEPTools` and `COLLIER` library
+paths under `mg5_path` to `LD_LIBRARY_PATH` when it launches MG5 or madevent.
+
+The generated madevent scan cards explicitly disable common run-card cuts by
+default. Each launch block sets:
+
+```text
+set dsqrt_shat 0.0
+set ptheavy 0.0
+set pt_min_pdg {}
+set pt_max_pdg {}
+set eta_min_pdg {}
+set eta_max_pdg {}
+set mxx_min_pdg {}
+```
+
+To intentionally use cuts, set `no_cuts = false` in `[scan]` and put the
+desired `set ...` commands in `extra_set_commands`.
+
 ## Basic Workflow
 
 1. Inspect the scan points:
@@ -55,8 +124,10 @@ Use `--force-output` if you want the MG5 `output ... -f` behavior.
 multihiggs scan configs/gg_hhh_c3d4.toml
 ```
 
-This skips completed runs by checking for
-`Events/<run_name>/unweighted_events.lhe.gz`. To run madevent:
+This skips completed runs only when
+`Events/<run_name>/unweighted_events.lhe.gz` exists and has at least the
+configured event minimum. By default, that minimum is `[scan].nevents`, which
+defaults to `10000` if omitted. To run madevent:
 
 ```bash
 multihiggs scan configs/gg_hhh_c3d4.toml --run
@@ -75,7 +146,14 @@ multihiggs scan configs/gg_hhh_c3d4.toml --force
 multihiggs collect configs/gg_hhh_c3d4.toml --run-number 2
 ```
 
-This writes `outputs/gg_hhh/xsecs.csv`.
+This writes `outputs/gg_hhh/xsecs.csv`. `collect` uses the same configured
+event-count minimum as `scan`, so it will skip lower-stat run directories and
+print a warning. To collect older one-event integration samples, override the
+threshold:
+
+```bash
+multihiggs collect configs/gg_hhh_c3d4.toml --run-number 2 --min-events 1
+```
 
 5. Fit the cross section:
 
@@ -87,6 +165,16 @@ This writes `outputs/gg_hhh/fit.json`, including Chebyshev coefficients,
 the covariance matrix, fit diagnostics, and monomial coefficients normalized
 to the SM point.
 
+To print the old-style coefficient blocks directly:
+
+```bash
+multihiggs fit configs/gg_hhh_c3d4.toml --print-polynomial
+```
+
+That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
+to the constant term, monomial coefficients in fitted variables such as
+`k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
+
 ## Adapting To A New Process Or Model
 
 Copy one of the config files and edit:
@@ -95,6 +183,29 @@ Copy one of the config files and edit:
 - `[[couplings]]`: one entry per MadGraph parameter to scan
 - `[scan]`: run number, collider energy, events per point, and integration options
 - `[fit]`: Chebyshev terms to fit
+
+By default `[scan]` has `no_cuts = true`, so the launch card clears common
+MadGraph run-card cuts. Keep this for inclusive cross-section fits.
+
+The event settings in `[scan]` control both generation and completed-run
+detection:
+
+```toml
+[scan]
+nevents = 10000
+# Optional. If omitted, completed-run detection uses nevents.
+# Use 0 to accept any existing LHE file regardless of event count.
+min_events = 10000
+```
+
+For a fast cross-section-only integration scan where existing one-event samples
+should count as complete, set:
+
+```toml
+[scan]
+nevents = 1
+min_events = 1
+```
 
 For the 4H-style `c3,d4` scan, the fitted variables are physical kappas:
 
@@ -126,6 +237,23 @@ Build histograms:
 
 ```bash
 multihiggs hist configs/gg_hhh_c3d4.toml
+```
+
+`hist` also uses the configured event-count minimum. With the starter configs,
+that means only 10k-event runs are histogrammed. You can override the threshold
+from the command line:
+
+```bash
+multihiggs hist configs/gg_hhhh_c3d4.toml --min-events 10000
+```
+
+The same explicit filter is available for `fit` when the input CSV contains an
+`event_count` column:
+
+```bash
+multihiggs fit configs/gg_hhhh_c3d4.toml \
+  --input outputs/gg_4h/histograms.csv \
+  --min-events 10000
 ```
 
 Fit every histogram bin with the same polynomial basis:

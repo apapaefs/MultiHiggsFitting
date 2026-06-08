@@ -33,6 +33,7 @@ def write_histogram_csv(
     output_path: Path,
     observable_names: set[str] | None = None,
     run_numbers: set[str] | None = None,
+    min_events: int | None = None,
 ) -> Path:
     observables = [
         observable
@@ -42,19 +43,28 @@ def write_histogram_csv(
     if not observables:
         raise ValueError("No observables selected. Add [[observables]] entries to the config.")
 
-    runs = discover_completed_runs(config, run_numbers=run_numbers)
+    runs = discover_completed_runs(config, run_numbers=run_numbers, min_events=min_events)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = (
         ["run_name", "run_number"]
         + [coupling.name for coupling in config.couplings]
-        + ["observable", "bin_index", "bin_low", "bin_high", "bin_xsec_pb", "bin_error_pb", "event_file"]
+        + [
+            "observable",
+            "bin_index",
+            "bin_low",
+            "bin_high",
+            "bin_xsec_pb",
+            "bin_error_pb",
+            "event_count",
+            "event_file",
+        ]
     )
     with output_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         for run in runs:
             for observable in observables:
-                hist, err = histogram_lhe(run.event_file, observable)
+                hist, err, n_events = histogram_lhe_with_count(run.event_file, observable)
                 for index, (value, error) in enumerate(zip(hist, err)):
                     row = _run_row(config, run)
                     row.update(
@@ -65,6 +75,7 @@ def write_histogram_csv(
                             "bin_high": observable.bins[index + 1],
                             "bin_xsec_pb": value,
                             "bin_error_pb": error,
+                            "event_count": n_events,
                             "event_file": str(run.event_file),
                         }
                     )
@@ -73,10 +84,18 @@ def write_histogram_csv(
 
 
 def histogram_lhe(event_file: Path, observable: ObservableConfig) -> tuple[np.ndarray, np.ndarray]:
+    hist, err, _ = histogram_lhe_with_count(event_file, observable)
+    return hist, err
+
+
+def histogram_lhe_with_count(
+    event_file: Path,
+    observable: ObservableConfig,
+) -> tuple[np.ndarray, np.ndarray, int]:
     events = list(iter_lhe_events(event_file))
     if not events:
         zeros = np.zeros(len(observable.bins) - 1, dtype=float)
-        return zeros, zeros
+        return zeros, zeros, 0
     xsec = read_xsec(event_file)
     event_weight = xsec / len(events)
     hist = np.zeros(len(observable.bins) - 1, dtype=float)
@@ -89,7 +108,9 @@ def histogram_lhe(event_file: Path, observable: ObservableConfig) -> tuple[np.nd
                 continue
             hist[index] += event_weight
             sumw2[index] += event_weight * event_weight
-    return hist, np.sqrt(sumw2)
+    errors = np.sqrt(sumw2)
+    errors = np.where(errors > 0.0, errors, abs(event_weight))
+    return hist, errors, len(events)
 
 
 def iter_lhe_events(event_file: Path):

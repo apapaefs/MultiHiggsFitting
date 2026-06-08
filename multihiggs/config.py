@@ -38,6 +38,20 @@ DEFAULT_PRE_MODEL_COMMANDS = [
 ]
 
 
+DEFAULT_NO_CUT_COMMANDS = [
+    "set dsqrt_shat 0.0",
+    "set ptheavy 0.0",
+    "set pt_min_pdg {}",
+    "set pt_max_pdg {}",
+    "set eta_min_pdg {}",
+    "set eta_max_pdg {}",
+    "set mxx_min_pdg {}",
+]
+
+
+DEFAULT_NEVENTS = 10000
+
+
 @dataclass(frozen=True)
 class CouplingConfig:
     name: str
@@ -114,24 +128,43 @@ class MGOptions:
 
 @dataclass(frozen=True)
 class ScanConfig:
-    run_number: str
-    energy_tev: float
-    nevents: int
+    run_number: str = "1"
+    energy_tev: float = 14.0
+    nevents: int = DEFAULT_NEVENTS
+    min_events: int | None = None
     strategy: str = "chebyshev_lobatto"
     sort: str = "sm_first"
     skip_existing: bool = True
+    no_cuts: bool = True
+    no_cut_commands: list[str] = field(default_factory=lambda: list(DEFAULT_NO_CUT_COMMANDS))
     extra_set_commands: list[str] = field(default_factory=list)
     madgraph: MGOptions = field(default_factory=MGOptions)
 
+    def __post_init__(self) -> None:
+        if self.nevents < 1:
+            raise ValueError("[scan] nevents must be at least 1")
+        if self.min_events is not None and self.min_events < 0:
+            raise ValueError("[scan] min_events must be non-negative")
+
+    @property
+    def event_minimum(self) -> int:
+        if self.min_events is not None:
+            return self.min_events
+        return self.nevents
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ScanConfig":
+        min_events = data.get("min_events")
         return cls(
             run_number=str(data.get("run_number", "1")),
             energy_tev=float(data.get("energy_tev", 14.0)),
-            nevents=int(data.get("nevents", 1)),
+            nevents=int(data.get("nevents", DEFAULT_NEVENTS)),
+            min_events=None if min_events is None else int(min_events),
             strategy=str(data.get("strategy", "chebyshev_lobatto")),
             sort=str(data.get("sort", "sm_first")),
             skip_existing=bool(data.get("skip_existing", True)),
+            no_cuts=bool(data.get("no_cuts", True)),
+            no_cut_commands=[str(item) for item in data.get("no_cut_commands", DEFAULT_NO_CUT_COMMANDS)],
             extra_set_commands=[str(item) for item in data.get("extra_set_commands", [])],
             madgraph=MGOptions.from_dict(data.get("madgraph")),
         )

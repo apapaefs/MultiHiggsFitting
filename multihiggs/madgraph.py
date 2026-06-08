@@ -7,6 +7,7 @@ from typing import Iterable
 
 from .config import ProjectConfig
 from .grid import ScanPoint
+from .results import event_count
 
 
 def mg_runtime_env(mg5_path: Path) -> dict[str, str]:
@@ -65,6 +66,8 @@ def build_launch_block(config: ProjectConfig, point: ScanPoint) -> list[str]:
     ]
     for coupling, text in zip(config.couplings, point.texts):
         lines.append(f"set {coupling.parameter} {text}")
+    if config.scan.no_cuts:
+        lines.extend(config.scan.no_cut_commands)
     lines.extend(config.scan.extra_set_commands)
     lines.append(f"set nevents {config.scan.nevents}")
     lines.append("0")
@@ -85,15 +88,35 @@ def write_madevent_card(
 ) -> tuple[Path, list[ScanPoint]]:
     path.parent.mkdir(parents=True, exist_ok=True)
     selected: list[ScanPoint] = []
+    low_stat_existing: list[tuple[str, int]] = []
     lines: list[str] = []
     for point in points:
         if max_runs is not None and len(selected) >= max_runs:
             break
-        if not force and config.scan.skip_existing and event_file(config, point).exists():
-            continue
+        if not force and config.scan.skip_existing:
+            lhe_file = event_file(config, point)
+            if lhe_file.exists():
+                event_minimum = config.scan.event_minimum
+                if event_minimum <= 0:
+                    continue
+                n_events = event_count(lhe_file)
+                if n_events >= event_minimum:
+                    continue
+                low_stat_existing.append((point.run_name(config), n_events))
         selected.append(point)
         lines.extend(build_launch_block(config, point))
     path.write_text("\n".join(lines), encoding="utf-8")
+    if low_stat_existing:
+        event_minimum = config.scan.event_minimum
+        print(
+            "Warning: "
+            f"{len(low_stat_existing)} existing run(s) have fewer than {event_minimum} events; "
+            "scheduling them again"
+        )
+        for run_name, n_events in low_stat_existing[:10]:
+            print(f"  {run_name}: {n_events} events")
+        if len(low_stat_existing) > 10:
+            print(f"  ... {len(low_stat_existing) - 10} additional run(s)")
     return path, selected
 
 

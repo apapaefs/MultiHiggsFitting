@@ -17,6 +17,7 @@ class RunResult:
     xsec_pb: float
     xerr_pb: float
     event_file: Path
+    event_count: int | None = None
 
     def as_dict(self, config: ProjectConfig) -> dict[str, str | float]:
         row: dict[str, str | float] = {
@@ -26,6 +27,8 @@ class RunResult:
             "xerr_pb": self.xerr_pb,
             "event_file": str(self.event_file),
         }
+        if self.event_count is not None:
+            row["event_count"] = self.event_count
         for coupling, value in zip(config.couplings, self.values):
             row[coupling.name] = value
         return row
@@ -35,14 +38,17 @@ def discover_completed_runs(
     config: ProjectConfig,
     run_numbers: set[str] | None = None,
     exclude_run_numbers: set[str] | None = None,
+    min_events: int | None = None,
 ) -> list[RunResult]:
     event_dir = config.process_dir / "Events"
     prefix = "run_" + config.name + "_"
+    event_minimum = config.scan.event_minimum if min_events is None else min_events
     results: list[RunResult] = []
     if not event_dir.exists():
         return results
 
     exclude_run_numbers = exclude_run_numbers or set()
+    skipped_low_stats = 0
     for rundir in sorted(event_dir.glob(prefix + "*")):
         if not rundir.is_dir():
             continue
@@ -64,10 +70,21 @@ def discover_completed_runs(
         event_file = rundir / "unweighted_events.lhe.gz"
         if not event_file.exists():
             continue
+        n_events = None
+        if event_minimum > 0:
+            n_events = event_count(event_file)
+            if n_events < event_minimum:
+                skipped_low_stats += 1
+                continue
         xsec = read_xsec(event_file)
         xerr = read_integration_error(config.process_dir, run_name, xsec)
-        results.append(RunResult(run_name, run_number, values, xsec, xerr, event_file))
+        results.append(RunResult(run_name, run_number, values, xsec, xerr, event_file, n_events))
     results.sort(key=lambda item: (item.run_number, item.values))
+    if event_minimum > 0:
+        if skipped_low_stats:
+            print(f"Warning: skipped {skipped_low_stats} run(s) with fewer than {event_minimum} events")
+        if not results:
+            print(f"Warning: no completed runs found with at least {event_minimum} events")
     return results
 
 
@@ -79,6 +96,15 @@ def read_xsec(event_file: Path) -> float:
             if match is not None:
                 return float(match.group(1))
     raise RuntimeError(f"No integrated weight found in {event_file}")
+
+
+def event_count(event_file: Path) -> int:
+    count = 0
+    with gzip.open(event_file, "rt", errors="ignore") as stream:
+        for line in stream:
+            if line.strip() == "<event>":
+                count += 1
+    return count
 
 
 def read_integration_error(process_dir: Path, run_name: str, xsec: float) -> float:
@@ -99,6 +125,7 @@ def write_results_csv(config: ProjectConfig, results: list[RunResult], path: Pat
     fieldnames = ["run_name", "run_number"] + [c.name for c in config.couplings] + [
         "xsec_pb",
         "xerr_pb",
+        "event_count",
         "event_file",
     ]
     with path.open("w", newline="", encoding="utf-8") as stream:
@@ -122,6 +149,7 @@ def read_results_csv(path: Path, config: ProjectConfig) -> list[RunResult]:
                     xsec_pb=float(row["xsec_pb"]),
                     xerr_pb=float(row.get("xerr_pb") or 0.0),
                     event_file=Path(row["event_file"]),
+                    event_count=None if not row.get("event_count") else int(row["event_count"]),
                 )
             )
     return results
