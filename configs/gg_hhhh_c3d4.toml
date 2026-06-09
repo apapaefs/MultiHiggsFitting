@@ -1,6 +1,6 @@
 [process]
 name = "gg_4h"
-mg5_path = "/mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15"
+mg5_path = "MG5_aMC_v3_5_15"
 model = "loop_sm_c3d4"
 generate = "g g > h h h h [noborn=QCD]"
 output = "gg_4h_c3d4"

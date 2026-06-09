@@ -45,8 +45,9 @@ def write_process_card(config: ProjectConfig, path: Path, force_output: bool = F
 
 
 def run_mg5(config: ProjectConfig, process_card: Path) -> int:
-    command = [str(config.mg5_path / "bin" / "mg5_aMC"), str(process_card)]
-    return _stream_subprocess(command, cwd=config.mg5_path, env=mg_runtime_env(config.mg5_path))
+    mg5_path = config.mg5_path.resolve()
+    command = [str(mg5_path / "bin" / "mg5_aMC"), str(process_card.resolve())]
+    return _stream_subprocess(command, cwd=mg5_path, env=mg_runtime_env(mg5_path))
 
 
 def launch_options(config: ProjectConfig) -> str:
@@ -121,20 +122,22 @@ def write_madevent_card(
 
 
 def run_madevent(config: ProjectConfig, command_file: Path) -> int:
-    command = [str(config.process_dir / "bin" / "madevent"), str(command_file)]
-    return _stream_subprocess(command, cwd=config.process_dir, env=mg_runtime_env(config.mg5_path))
+    mg5_path = config.mg5_path.resolve()
+    process_dir = config.process_dir.resolve()
+    command = [str(process_dir / "bin" / "madevent"), str(command_file.resolve())]
+    return _stream_subprocess(command, cwd=process_dir, env=mg_runtime_env(mg5_path))
 
 
 def _stream_subprocess(command: list[str], cwd: Path, env: dict[str, str]) -> int:
-    proc = subprocess.Popen(
+    with subprocess.Popen(
         command,
         cwd=str(cwd),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-    )
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        print(line, end="")
-    return proc.wait()
+    ) as proc:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            print(line, end="")
+        return proc.wait()

@@ -8,6 +8,11 @@ workflow for:
 - `gg -> h h h` in [configs/gg_hhh_c3d4.toml](configs/gg_hhh_c3d4.toml)
 - `gg -> h h h h` in [configs/gg_hhhh_c3d4.toml](configs/gg_hhhh_c3d4.toml)
 
+There is also a light validation config for `gg -> t t~ h h` with only `c3`
+scanned over `[-20, 20]`:
+
+- [configs/gg_tthh_c3_validation.toml](configs/gg_tthh_c3_validation.toml)
+
 ## Setup
 
 From this repository:
@@ -34,36 +39,36 @@ sudo apt-get update
 sudo apt-get install -y python3 gfortran g++ make wget tar gzip
 ```
 
-Install or unpack MG5/aMC. If you are reproducing the original local setup,
-there is already a tarball under `/mnt/ssd2/Projects/4H`:
+Install or unpack MG5/aMC. For a local checkout, put the MG5 directory at the
+repository root:
 
 ```bash
-mkdir -p /mnt/ssd2/Projects/4H
-tar -xzf /mnt/ssd2/Projects/4H/LTS_MG5aMC_v3.5.15.tgz \
-  -C /mnt/ssd2/Projects/4H
+tar -xf LTS_MG5aMC_v3.5.15.tar
 ```
 
 The example configs assume:
 
 ```toml
-mg5_path = "/mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15"
+mg5_path = "MG5_aMC_v3_5_15"
 ```
 
-If MG5 is somewhere else, edit `mg5_path` in the config you are using.
+If MG5 is somewhere else, edit `mg5_path` in the config you are using. The
+original Linux workstation setup used
+`/mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15`.
 
 Install the UFO model used by the starter configs. The repository includes a
 clean copy under `models/loop_sm_c3d4`; copy or symlink it into the MG5 model
-directory:
+directory. For the repo-local MG5 install:
 
 ```bash
-cp -a models/loop_sm_c3d4 /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/
+ln -s ../../models/loop_sm_c3d4 MG5_aMC_v3_5_15/models/loop_sm_c3d4
 ```
 
 The repository also vendors `heft_loop_sm_restricted5` from
 `https://gitlab.com/apapaefs/multihiggs_loop_sm` at commit `99ba5ee90669`:
 
 ```bash
-cp -a models/heft_loop_sm_restricted5 /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/
+ln -s ../../models/heft_loop_sm_restricted5 MG5_aMC_v3_5_15/models/heft_loop_sm_restricted5
 ```
 
 If you are reproducing the old 4H area and prefer the archived copy, it is also
@@ -77,7 +82,7 @@ tar -xzf /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/loop_sm_c3d4.tar.gz \
 Check that MG5 can import the model:
 
 ```bash
-cd /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15
+cd MG5_aMC_v3_5_15
 ./bin/mg5_aMC
 ```
 
@@ -154,6 +159,19 @@ Useful development options:
 multihiggs scan configs/gg_hhh_c3d4.toml --max-runs 3
 multihiggs scan configs/gg_hhh_c3d4.toml --force
 ```
+
+After generating a process directory, inspect the matrix-element coupling
+support that the generated HELAS code implies:
+
+```bash
+multihiggs infer-terms configs/gg_tthh_c3_validation.toml
+```
+
+This prints the inferred amplitude support and the corresponding candidate
+`[fit].terms` for the cross section. Treat the output as a generated
+cross-check, not a proof: cancellations or model subtleties can still remove
+or add practical fit requirements, and the command ends with an explicit
+`WARNING: CHECK` reminder.
 
 4. Collect completed cross sections:
 

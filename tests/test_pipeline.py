@@ -10,12 +10,14 @@ from pathlib import Path
 
 import numpy as np
 
+from multihiggs.cli import main
 from multihiggs.config import ScanConfig, load_config
 from multihiggs.fit import fit_values, format_polynomial_report
 from multihiggs.grid import generate_scan_points
 from multihiggs.histograms import histogram_lhe
-from multihiggs.madgraph import build_launch_block, write_madevent_card
+from multihiggs.madgraph import build_launch_block, run_madevent, run_mg5, write_madevent_card
 from multihiggs.results import event_count, read_xsec
+from multihiggs.term_inference import format_inferred_terms, infer_terms_from_process_dir
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +35,41 @@ def write_test_lhe(path: Path, n_events: int) -> None:
         stream.write("</LesHouchesEvents>\n")
 
 
+def write_generated_process_fixture(process_dir: Path) -> None:
+    model_dir = process_dir / "bin" / "internal" / "ufomodel"
+    matrix_dir = process_dir / "SubProcesses" / "P1_fixture"
+    model_dir.mkdir(parents=True)
+    matrix_dir.mkdir(parents=True)
+    (model_dir / "couplings.py").write_text(
+        """
+GC_SM = Coupling(name = 'GC_SM',
+                 value = 'yt',
+                 order = {'QED':1})
+GC_C3 = Coupling(name = 'GC_C3',
+                 value = '-6*complex(0,1)*lam*v*(1 + c3)',
+                 order = {'QED':1})
+GC_D4 = Coupling(name = 'GC_D4',
+                 value = '-6*complex(0,1)*lam*(1 + d4)',
+                 order = {'QED':2})
+""",
+        encoding="utf-8",
+    )
+    (matrix_dir / "matrix1_orig.f").write_text(
+        """
+      SUBROUTINE MATRIX1()
+      CALL SXXXXX(P(0,1),+1*IC(1),W(1,1))
+      CALL SXXXXX(P(0,2),+1*IC(2),W(1,2))
+      CALL SSS1_1(W(1,1),W(1,2),GC_C3,MDL_MH,FK_MDL_WH,W(1,3))
+      CALL SSS1_1(W(1,1),W(1,2),GC_D4,MDL_MH,FK_MDL_WH,W(1,4))
+      CALL SSS1_0(W(1,1),W(1,2),GC_SM,AMP(1))
+      CALL SSS1_0(W(1,3),W(1,2),GC_SM,AMP(2))
+      CALL SSS1_0(W(1,4),W(1,2),GC_SM,AMP(3))
+      END
+""",
+        encoding="utf-8",
+    )
+
+
 class PipelineTests(unittest.TestCase):
     def test_hhh_grid_matches_expected_size_and_sm_first(self):
         config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
@@ -46,6 +83,18 @@ class PipelineTests(unittest.TestCase):
         points = generate_scan_points(config)
         self.assertEqual(len(points), 41)
         self.assertEqual(len(config.fit.terms), 15)
+
+    def test_tthh_validation_grid_scans_c3_directly(self):
+        config = load_config(ROOT / "configs" / "gg_tthh_c3_validation.toml")
+        points = generate_scan_points(config)
+        values = [point.values[0] for point in points]
+        self.assertEqual(len(points), 5)
+        self.assertEqual(values[0], 0.0)
+        self.assertEqual(min(values), -20.0)
+        self.assertEqual(max(values), 20.0)
+        self.assertEqual(config.couplings[0].fit_name, "c3")
+        self.assertEqual(config.couplings[0].fit_offset, 0.0)
+        self.assertEqual(config.fit.terms, ((0,), (1,), (2,)))
 
     def test_scan_defaults_to_ten_thousand_events(self):
         scan = ScanConfig.from_dict({})
@@ -88,6 +137,104 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("set eta_max_pdg {}", block)
         self.assertIn("set mxx_min_pdg {}", block)
         self.assertIn("set nevents 10000", block)
+
+    def test_run_commands_accept_relative_mg5_path(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5_aMC_v3_5_15"
+            process_dir = mg5_path / "proc"
+            (mg5_path / "bin").mkdir(parents=True)
+            (process_dir / "bin").mkdir(parents=True)
+
+            mg5_bin = mg5_path / "bin" / "mg5_aMC"
+            mg5_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            mg5_bin.chmod(0o755)
+
+            madevent_bin = process_dir / "bin" / "madevent"
+            madevent_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            madevent_bin.chmod(0o755)
+
+            process_card = tmp_root / "process.mg5"
+            process_card.write_text("quit\n", encoding="utf-8")
+            command_file = tmp_root / "scan.dcmd"
+            command_file.write_text("", encoding="utf-8")
+
+            config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
+            config = replace(
+                config,
+                mg5_path=mg5_path.relative_to(ROOT),
+                output="proc",
+            )
+
+            self.assertEqual(run_mg5(config, process_card), 0)
+            self.assertEqual(run_madevent(config, command_file), 0)
+
+    def test_infers_terms_from_generated_matrix_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            process_dir = Path(tmpdir) / "proc"
+            write_generated_process_fixture(process_dir)
+
+            result = infer_terms_from_process_dir(process_dir, ("c3", "d4"))
+
+            self.assertEqual(result.amplitude_terms, ((0, 0), (1, 0), (0, 1)))
+            self.assertEqual(
+                result.cross_section_terms,
+                ((0, 0), (1, 0), (0, 1), (2, 0), (1, 1), (0, 2)),
+            )
+            self.assertEqual(result.amplitude_support_counts[((0, 0), (1, 0))], 1)
+            self.assertEqual(result.amplitude_support_counts[((0, 0), (0, 1))], 1)
+
+            report = format_inferred_terms(result)
+            self.assertIn("Inferred cross-section [fit].terms:", report)
+            self.assertIn("  [1, 1],", report)
+            self.assertTrue(report.rstrip().endswith("WARNING: CHECK inferred fit terms before using them."))
+
+    def test_infer_terms_command_prints_check_warning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5"
+            process_dir = mg5_path / "proc"
+            write_generated_process_fixture(process_dir)
+            config_path = tmp_root / "config.toml"
+            config_path.write_text(
+                f"""
+[process]
+name = "fixture"
+mg5_path = "{mg5_path}"
+model = "loop_sm_c3d4"
+generate = "g g > h h"
+output = "proc"
+
+[[couplings]]
+name = "c3"
+parameter = "c3"
+fit_name = "c3"
+range = [-1.0, 1.0]
+points = 3
+
+[[couplings]]
+name = "d4"
+parameter = "d4"
+fit_name = "d4"
+range = [-1.0, 1.0]
+points = 3
+
+[fit]
+basis = "chebyshev"
+terms = [[0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = main(["infer-terms", str(config_path)])
+
+            self.assertEqual(status, 0)
+            output = stdout.getvalue()
+            self.assertIn("terms = [", output)
+            self.assertIn("  [2, 0],", output)
+            self.assertTrue(output.rstrip().endswith("WARNING: CHECK inferred fit terms before using them."))
 
     def test_scan_reschedules_existing_runs_below_configured_event_minimum(self):
         with tempfile.TemporaryDirectory() as tmpdir:

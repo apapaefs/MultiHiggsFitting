@@ -10,6 +10,7 @@ from .grid import generate_scan_points
 from .histograms import write_histogram_csv
 from .madgraph import run_madevent, run_mg5, write_madevent_card, write_process_card
 from .results import discover_completed_runs, write_results_csv
+from .term_inference import format_inferred_terms, infer_terms_from_process_dir
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,6 +65,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Print old-style polynomial coefficient blocks after fitting",
     )
 
+    infer_parser = add_config_command(
+        subparsers,
+        "infer-terms",
+        "Infer fit terms from a generated MG5 process directory",
+    )
+    infer_parser.add_argument(
+        "--process-dir",
+        type=Path,
+        help="Override the generated process directory; defaults to [process].mg5_path / output",
+    )
+
     args = parser.parse_args(argv)
     config = load_config(args.config)
 
@@ -85,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_hist(config, args.output, args.observables, args.run_numbers, args.min_events)
     if args.command == "fit":
         return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events)
+    if args.command == "infer-terms":
+        return command_infer_terms(config, args.process_dir)
     raise AssertionError(args.command)
 
 
@@ -213,4 +227,14 @@ def command_fit(
         for result in results:
             print()
             print(format_polynomial_report(config, result))
+    return 0
+
+
+def command_infer_terms(config, process_dir: Path | None) -> int:
+    process_dir = process_dir or config.process_dir
+    result = infer_terms_from_process_dir(
+        process_dir,
+        tuple(coupling.parameter for coupling in config.couplings),
+    )
+    print(format_inferred_terms(result))
     return 0

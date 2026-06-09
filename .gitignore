@@ -8,3 +8,7 @@ outputs/
 build/
 dist/
 *.egg-info/
+MG5_aMC_*/
+LTS_MG5aMC_*.tar*
+py.py
+models/*/py3_model*.pkl
