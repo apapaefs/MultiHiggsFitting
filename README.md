@@ -13,6 +13,8 @@ There are also light validation configs:
 - `gg -> h h [noborn=QCD]` in [configs/gg_hh_c3_validation.toml](configs/gg_hh_c3_validation.toml)
 - `gg -> t t~ h h` in [configs/gg_tthh_c3_validation.toml](configs/gg_tthh_c3_validation.toml)
 - `gg -> t t~ h h h` in [configs/gg_tthhh_c3d4_validation.toml](configs/gg_tthhh_c3d4_validation.toml)
+- `gg -> t t~ h h h` with the restricted5 model and `ct`, `ct2`, `c3`
+  modifiers in [configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml](configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml)
 
 ## Setup
 

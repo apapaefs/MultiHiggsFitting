@@ -147,6 +147,18 @@ class PipelineTests(unittest.TestCase):
             ),
         )
 
+    def test_restricted5_tthhh_validation_maps_readable_modifier_names(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+        points = generate_scan_points(config)
+        self.assertEqual(config.model, "heft_loop_sm_restricted5")
+        self.assertEqual(config.generate, "g g > t t~ h h h")
+        self.assertEqual(len(points), 27)
+        self.assertEqual(points[0].values, (0.0, 0.0, 0.0))
+        self.assertEqual([coupling.name for coupling in config.couplings], ["ct", "ct2", "c3"])
+        self.assertEqual([coupling.parameter for coupling in config.couplings], ["CT1", "CT2", "D3"])
+        self.assertEqual(config.scan.extra_set_commands, ["set CT3 0.0", "set D4 0.0"])
+        self.assertEqual(len(config.fit.terms), 27)
+
     def test_scan_defaults_to_ten_thousand_events(self):
         scan = ScanConfig.from_dict({})
         self.assertEqual(scan.nevents, 10000)
