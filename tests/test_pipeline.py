@@ -84,6 +84,19 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(points), 41)
         self.assertEqual(len(config.fit.terms), 15)
 
+    def test_hh_validation_grid_scans_c3_directly(self):
+        config = load_config(ROOT / "configs" / "gg_hh_c3_validation.toml")
+        points = generate_scan_points(config)
+        values = [point.values[0] for point in points]
+        self.assertEqual(config.generate, "g g > h h [noborn=QCD]")
+        self.assertEqual(len(points), 5)
+        self.assertEqual(values[0], 0.0)
+        self.assertEqual(min(values), -20.0)
+        self.assertEqual(max(values), 20.0)
+        self.assertEqual(config.couplings[0].fit_name, "c3")
+        self.assertEqual(config.couplings[0].fit_offset, 0.0)
+        self.assertEqual(config.fit.terms, ((0,), (1,), (2,)))
+
     def test_tthh_validation_grid_scans_c3_directly(self):
         config = load_config(ROOT / "configs" / "gg_tthh_c3_validation.toml")
         points = generate_scan_points(config)
