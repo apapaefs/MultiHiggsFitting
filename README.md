@@ -14,6 +14,28 @@ There are also light validation configs:
 - `gg -> t t~ h h` in [configs/gg_tthh_c3_validation.toml](configs/gg_tthh_c3_validation.toml)
 - `gg -> t t~ h h h` in [configs/gg_tthhh_c3d4_validation.toml](configs/gg_tthhh_c3d4_validation.toml)
 
+## H Gamma Gamma Helper
+
+Some local MG5 installations used with this project include an `hgammagamma`
+or `models/hgg_plugin` directory. That directory is an auxiliary
+FeynRules/UFO-style Higgs effective-coupling model, not the main reusable
+`multihiggs` Python package and not one of the vendored multi-Higgs UFOs under
+`models/`.
+
+The files in that directory are the usual generated UFO model pieces:
+`particles.py`, `parameters.py`, `couplings.py`, `lorentz.py`, `vertices.py`,
+`coupling_orders.py`, and a `write_param_card.py` helper, plus the
+FeynRules export log. The local copy inspected here is the
+`Higgs_Effective_Couplings` model. It contains effective `H gamma gamma`,
+`H g g`, and related multi-gluon Higgs vertices, with particles such as the
+photon, gluon, the Higgs-like scalar `H`, and an auxiliary scalar `h1`.
+
+This helper is useful for quick checks involving effective Higgs-photon or
+Higgs-gluon interactions, but the multi-Higgs scan configs in this repository
+use `loop_sm_c3d4` unless a config explicitly says otherwise. If the helper is
+inside `MG5_aMC_v3_5_15/`, it is part of the local MG5 installation and is
+ignored by git.
+
 ## Setup
 
 From this repository:
