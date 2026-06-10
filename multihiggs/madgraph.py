@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -17,16 +18,21 @@ def mg_runtime_env(mg5_path: Path) -> dict[str, str]:
         mg5_path / "HEPTools" / "collier",
         mg5_path / "HEPTools" / "collier" / "COLLIER-1.2.9",
     ]
-    existing = [
+    paths = [
         str(path)
         for path in lib_paths
         if (path / "libcollier.so").exists() or path.exists()
     ]
-    current = env.get("LD_LIBRARY_PATH")
-    if current:
-        existing.append(current)
-    if existing:
-        env["LD_LIBRARY_PATH"] = ":".join(existing)
+    variables = ["LD_LIBRARY_PATH"]
+    if sys.platform == "darwin":
+        variables.append("DYLD_LIBRARY_PATH")
+    for variable in variables:
+        existing = list(paths)
+        current = env.get(variable)
+        if current:
+            existing.append(current)
+        if existing:
+            env[variable] = ":".join(existing)
     return env
 
 
@@ -124,8 +130,30 @@ def write_madevent_card(
 def run_madevent(config: ProjectConfig, command_file: Path) -> int:
     mg5_path = config.mg5_path.resolve()
     process_dir = config.process_dir.resolve()
+    patch_macos_madloop_rpaths(process_dir)
     command = [str(process_dir / "bin" / "madevent"), str(command_file.resolve())]
     return _stream_subprocess(command, cwd=process_dir, env=mg_runtime_env(mg5_path))
+
+
+def patch_macos_madloop_rpaths(process_dir: Path, force: bool = False) -> None:
+    if sys.platform != "darwin" and not force:
+        return
+    for makefile in (
+        process_dir / "SubProcesses" / "makefile",
+        process_dir / "SubProcesses" / "makefile_MadLoop",
+    ):
+        if not makefile.exists():
+            continue
+        lines = makefile.read_text(encoding="utf-8").splitlines()
+        changed = False
+        patched: list[str] = []
+        for line in lines:
+            if line.startswith("LINKLIBS =") and "$(RPATH_LIBS)" not in line:
+                line = line + " $(RPATH_LIBS)"
+                changed = True
+            patched.append(line)
+        if changed:
+            makefile.write_text("\n".join(patched) + "\n", encoding="utf-8")
 
 
 def _stream_subprocess(command: list[str], cwd: Path, env: dict[str, str]) -> int:

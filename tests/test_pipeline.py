@@ -3,10 +3,12 @@ from __future__ import annotations
 import contextlib
 import gzip
 import io
+import os
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -15,7 +17,14 @@ from multihiggs.config import ScanConfig, load_config
 from multihiggs.fit import fit_values, format_polynomial_report
 from multihiggs.grid import generate_scan_points
 from multihiggs.histograms import histogram_lhe
-from multihiggs.madgraph import build_launch_block, run_madevent, run_mg5, write_madevent_card
+from multihiggs.madgraph import (
+    build_launch_block,
+    mg_runtime_env,
+    patch_macos_madloop_rpaths,
+    run_madevent,
+    run_mg5,
+    write_madevent_card,
+)
 from multihiggs.results import event_count, read_xsec
 from multihiggs.term_inference import format_inferred_terms, infer_terms_from_process_dir
 
@@ -109,6 +118,35 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(config.couplings[0].fit_offset, 0.0)
         self.assertEqual(config.fit.terms, ((0,), (1,), (2,)))
 
+    def test_tthhh_validation_grid_scans_c3_d4_directly(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_c3d4_validation.toml")
+        points = generate_scan_points(config)
+        c3_values = [point.values[0] for point in points]
+        d4_values = [point.values[1] for point in points]
+        self.assertEqual(config.generate, "g g > t t~ h h h")
+        self.assertEqual(len(points), 15)
+        self.assertEqual(points[0].values, (0.0, 0.0))
+        self.assertEqual(min(c3_values), -20.0)
+        self.assertEqual(max(c3_values), 20.0)
+        self.assertEqual(min(d4_values), -100.0)
+        self.assertEqual(max(d4_values), 100.0)
+        self.assertEqual(config.couplings[0].fit_offset, 0.0)
+        self.assertEqual(config.couplings[1].fit_offset, 0.0)
+        self.assertEqual(
+            config.fit.terms,
+            (
+                (0, 0),
+                (1, 0),
+                (2, 0),
+                (3, 0),
+                (4, 0),
+                (0, 1),
+                (1, 1),
+                (2, 1),
+                (0, 2),
+            ),
+        )
+
     def test_scan_defaults_to_ten_thousand_events(self):
         scan = ScanConfig.from_dict({})
         self.assertEqual(scan.nevents, 10000)
@@ -181,6 +219,56 @@ class PipelineTests(unittest.TestCase):
 
             self.assertEqual(run_mg5(config, process_card), 0)
             self.assertEqual(run_madevent(config, command_file), 0)
+
+    def test_mg_runtime_env_sets_macos_dyld_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mg5_path = Path(tmpdir) / "MG5"
+            heptools_lib = mg5_path / "HEPTools" / "lib"
+            heptools_lib.mkdir(parents=True)
+
+            with patch("multihiggs.madgraph.sys.platform", "darwin"), patch.dict(os.environ, {}, clear=True):
+                env = mg_runtime_env(mg5_path)
+
+            self.assertIn(str(heptools_lib), env["LD_LIBRARY_PATH"].split(":"))
+            self.assertIn(str(heptools_lib), env["DYLD_LIBRARY_PATH"].split(":"))
+
+    def test_mg_runtime_env_keeps_linux_environment_linux_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mg5_path = Path(tmpdir) / "MG5"
+            heptools_lib = mg5_path / "HEPTools" / "lib"
+            heptools_lib.mkdir(parents=True)
+
+            with patch("multihiggs.madgraph.sys.platform", "linux"), patch.dict(os.environ, {}, clear=True):
+                env = mg_runtime_env(mg5_path)
+
+            self.assertIn(str(heptools_lib), env["LD_LIBRARY_PATH"].split(":"))
+            self.assertNotIn("DYLD_LIBRARY_PATH", env)
+
+    def test_macos_madloop_makefile_links_with_rpath_only_on_darwin(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            process_dir = Path(tmpdir)
+            subproc_dir = process_dir / "SubProcesses"
+            subproc_dir.mkdir()
+            makefiles = [subproc_dir / "makefile", subproc_dir / "makefile_MadLoop"]
+            for makefile in makefiles:
+                makefile.write_text(
+                    "LINKLIBS = -L$(LIBDIR) -ldhelas -lmodel $(LINK_LOOP_LIBS) $(LDFLAGS)\n",
+                    encoding="utf-8",
+                )
+
+            with patch("multihiggs.madgraph.sys.platform", "linux"):
+                patch_macos_madloop_rpaths(process_dir)
+            for makefile in makefiles:
+                self.assertNotIn("$(RPATH_LIBS)", makefile.read_text(encoding="utf-8"))
+
+            with patch("multihiggs.madgraph.sys.platform", "darwin"):
+                patch_macos_madloop_rpaths(process_dir)
+                patch_macos_madloop_rpaths(process_dir)
+
+            for makefile in makefiles:
+                text = makefile.read_text(encoding="utf-8")
+                self.assertEqual(text.count("$(RPATH_LIBS)"), 1)
+                self.assertIn("$(LDFLAGS) $(RPATH_LIBS)", text)
 
     def test_infers_terms_from_generated_matrix_source(self):
         with tempfile.TemporaryDirectory() as tmpdir:

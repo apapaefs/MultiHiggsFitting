@@ -1,0 +1,82 @@
+[process]
+name = "gg_tthhh_c3d4_validation"
+mg5_path = "MG5_aMC_v3_5_15"
+model = "loop_sm_c3d4"
+generate = "g g > t t~ h h h"
+output = "gg_tthhh_c3d4_validation"
+
+[scan]
+run_number = "1"
+energy_tev = 14.0
+nevents = 100
+min_events = 100
+strategy = "chebyshev_lobatto"
+sort = "sm_first"
+skip_existing = true
+no_cuts = true
+
+[scan.madgraph]
+accuracy = 0.1
+points = 500
+iterations = 3
+
+[[couplings]]
+name = "c3"
+parameter = "c3"
+fit_name = "c3"
+range = [-20.0, 20.0]
+points = 5
+fit_offset = 0.0
+sm_value = 0.0
+
+[[couplings]]
+name = "d4"
+parameter = "d4"
+fit_name = "d4"
+range = [-100.0, 100.0]
+points = 3
+fit_offset = 0.0
+sm_value = 0.0
+
+[fit]
+basis = "chebyshev"
+terms = [
+  [0, 0],
+  [1, 0],
+  [2, 0],
+  [3, 0],
+  [4, 0],
+  [0, 1],
+  [1, 1],
+  [2, 1],
+  [0, 2],
+]
+normalize_to_sm = true
+
+[[observables]]
+name = "h_pt"
+kind = "pt"
+pdg_id = 25
+which = "all"
+bins = [0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]
+
+[[observables]]
+name = "hh_mass"
+kind = "invariant_mass"
+pdg_ids = [25, 25]
+which = "all"
+bins = [200.0, 300.0, 400.0, 500.0, 700.0, 1000.0, 1500.0, 2500.0]
+
+[[observables]]
+name = "hhh_mass"
+kind = "invariant_mass"
+pdg_ids = [25, 25, 25]
+which = "all"
+bins = [350.0, 450.0, 600.0, 800.0, 1000.0, 1500.0, 2500.0, 4000.0]
+
+[[observables]]
+name = "top_pt"
+kind = "pt"
+pdg_id = 6
+which = "all"
+bins = [0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]

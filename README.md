@@ -8,11 +8,11 @@ workflow for:
 - `gg -> h h h` in [configs/gg_hhh_c3d4.toml](configs/gg_hhh_c3d4.toml)
 - `gg -> h h h h` in [configs/gg_hhhh_c3d4.toml](configs/gg_hhhh_c3d4.toml)
 
-There are also light validation configs with only `c3` scanned over
-`[-20, 20]`:
+There are also light validation configs:
 
 - `gg -> h h [noborn=QCD]` in [configs/gg_hh_c3_validation.toml](configs/gg_hh_c3_validation.toml)
 - `gg -> t t~ h h` in [configs/gg_tthh_c3_validation.toml](configs/gg_tthh_c3_validation.toml)
+- `gg -> t t~ h h h` in [configs/gg_tthhh_c3d4_validation.toml](configs/gg_tthhh_c3d4_validation.toml)
 
 ## Setup
 
