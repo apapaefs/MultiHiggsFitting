@@ -249,6 +249,20 @@ That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
 to the constant term, monomial coefficients in fitted variables such as
 `k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
 
+End-to-end example for a new run-number campaign:
+
+```bash
+CONFIG=configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml
+RUN=2
+
+multihiggs grid "$CONFIG" --run-number "$RUN"
+multihiggs generate-process "$CONFIG" --run
+multihiggs infer-terms "$CONFIG"
+multihiggs scan "$CONFIG" --run-number "$RUN" --run
+multihiggs collect "$CONFIG" --run-number "$RUN"
+multihiggs fit "$CONFIG" --print-polynomial
+```
+
 ## Adapting To A New Process Or Model
 
 Copy one of the config files and edit:
