@@ -8,7 +8,7 @@ output = "gg_hh_c3_validation"
 [scan]
 run_number = "1"
 energy_tev = 14.0
-nevents = 100
+nevents = 10000
 min_events = 100
 strategy = "chebyshev_lobatto"
 sort = "sm_first"
