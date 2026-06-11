@@ -14,6 +14,12 @@ from .contours import (
     select_fit_record,
     write_contour_plot,
 )
+from .distributions import (
+    build_distribution_data,
+    default_distribution_output,
+    parse_parameter_points,
+    write_distribution_plot,
+)
 from .fit import fit_results_csv, format_polynomial_report
 from .grid import generate_scan_points
 from .histograms import write_histogram_csv
@@ -115,6 +121,26 @@ def main(argv: list[str] | None = None) -> int:
     contour_parser.add_argument("--y-points", type=int, help="Grid points on the y axis")
     contour_parser.add_argument("--linear", action="store_true", help="Use a linear color scale")
 
+    distribution_parser = add_config_command(
+        subparsers,
+        "distribution",
+        "Plot fitted histogram distributions at selected parameter points",
+    )
+    distribution_parser.add_argument("-i", "--input", type=Path, help="Histogram fit JSON; defaults to hist_fit.json")
+    distribution_parser.add_argument("-o", "--output", type=Path, help="Output image path")
+    distribution_parser.add_argument("--pdf-output", type=Path, help="Optional PDF output path")
+    distribution_parser.add_argument("--observable", required=True, help="Configured observable to plot")
+    distribution_parser.add_argument(
+        "--point",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE[,NAME=VALUE...]",
+        help="Parameter point to plot; may be repeated. Unspecified couplings use sm_value.",
+    )
+    distribution_parser.add_argument("--no-sm", action="store_true", help="Do not add the SM distribution")
+    distribution_parser.add_argument("--density", action="store_true", help="Plot bin contents divided by bin width")
+    distribution_parser.add_argument("--log-y", action="store_true", help="Use a logarithmic y axis")
+
     infer_parser = add_config_command(
         subparsers,
         "infer-terms",
@@ -170,6 +196,18 @@ def main(argv: list[str] | None = None) -> int:
             args.x_points,
             args.y_points,
             not args.linear,
+        )
+    if args.command == "distribution":
+        return command_distribution(
+            config,
+            args.input,
+            args.output,
+            args.pdf_output,
+            args.observable,
+            args.point,
+            not args.no_sm,
+            args.density,
+            args.log_y,
         )
     if args.command == "infer-terms":
         return command_infer_terms(config, args.process_dir, not args.no_update_config)
@@ -355,6 +393,41 @@ def command_contour(
     if contour.fixed_values:
         fixed_text = ", ".join(f"{name}={value:g}" for name, value in sorted(contour.fixed_values.items()))
         print(f"Fixed: {fixed_text}")
+    return 0
+
+
+def command_distribution(
+    config,
+    input_path: Path | None,
+    output: Path | None,
+    pdf_output: Path | None,
+    observable_name: str,
+    raw_points: list[str] | None,
+    include_sm: bool,
+    density: bool,
+    log_y: bool,
+) -> int:
+    input_path = input_path or default_path(config, "hist_fit.json")
+    payload = load_fit_json(input_path)
+    parameter_points = parse_parameter_points(config, raw_points)
+    distribution = build_distribution_data(
+        config,
+        payload,
+        observable_name,
+        parameter_points,
+        include_sm=include_sm,
+        density=density,
+    )
+    output = output or default_distribution_output(config, observable_name)
+    write_distribution_plot(config, distribution, output, log_y=log_y)
+    print(f"Wrote distribution plot to {output}")
+    if pdf_output is not None:
+        write_distribution_plot(config, distribution, pdf_output, log_y=log_y)
+        print(f"Wrote distribution plot to {pdf_output}")
+    print(
+        f"Plotted {observable_name} for "
+        + ", ".join(series.label for series in distribution.series)
+    )
     return 0
 
 

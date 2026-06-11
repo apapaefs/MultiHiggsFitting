@@ -362,6 +362,34 @@ multihiggs fit configs/gg_hhh_c3d4.toml \
   --output outputs/gg_hhh/hist_fit.json
 ```
 
+Plot fitted distributions at selected coupling points:
+
+```bash
+multihiggs distribution configs/gg_hhh_c3d4.toml \
+  --input outputs/gg_hhh/hist_fit.json \
+  --observable h_pt \
+  --point c3=5,d4=100 \
+  --output outputs/gg_hhh/h_pt_distribution.png \
+  --pdf-output outputs/gg_hhh/h_pt_distribution.pdf
+```
+
+The SM distribution is included by default. Use `--no-sm` to omit it. Repeat
+`--point` to overlay several coupling points; any coupling not specified in a
+point is fixed at its configured `sm_value`.
+
+```bash
+multihiggs distribution configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --input outputs/gg_tthhh_restricted5_ct_ct2_c3_validation/hist_fit.json \
+  --observable hhh_mass \
+  --point ct=0.5,ct2=0.25,c3=-0.5 \
+  --point ct=-0.25,c3=0.5
+```
+
+By default the y-axis is the fitted bin cross section, `sigma_bin` in pb, with
+vertical error bars from the fit covariance and horizontal error bars showing
+the bin widths. Use `--density` to plot bin contents divided by bin width, and
+`--log-y` for a logarithmic y-axis.
+
 For per-object observables such as `h_pt` with `which = "all"`, the histogram
 integral is multiplicity times the event cross section.
 

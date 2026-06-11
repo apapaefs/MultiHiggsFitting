@@ -17,6 +17,7 @@ import numpy as np
 from multihiggs.cli import main
 from multihiggs.config import ScanConfig, load_config
 from multihiggs.contours import PLOT_TITLE_FONTSIZE, build_contour_data, parse_fixed_values
+from multihiggs.distributions import build_distribution_data, parse_parameter_points
 from multihiggs.fit import fit_values, format_polynomial_report
 from multihiggs.grid import generate_scan_points
 from multihiggs.histograms import histogram_lhe
@@ -308,6 +309,82 @@ class PipelineTests(unittest.TestCase):
                         str(output),
                         "--points",
                         "5",
+                    ]
+                )
+
+            self.assertEqual(status, 0)
+            self.assertTrue(output.exists())
+            self.assertGreater(output.stat().st_size, 0)
+
+    def test_distribution_data_evaluates_histogram_bin_fits_at_points_and_sm(self):
+        config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
+        points = generate_scan_points(config)
+        values = [point.values for point in points]
+        observable = config.observables[0]
+        fit_records = []
+        for bin_index in range(len(observable.bins) - 1):
+            scale = float(bin_index + 1)
+            y = np.asarray([scale * (10.0 + 2.0 * c3 - 0.1 * d4) for c3, d4 in values])
+            yerr = np.ones(len(values)) * 0.01
+            fit_records.append(fit_values(config, values, y, yerr, f"{observable.name}:bin{bin_index}").to_dict(config))
+
+        distribution = build_distribution_data(
+            config,
+            {"fits": fit_records},
+            observable_name=observable.name,
+            parameter_points=[{"c3": 1.0, "d4": 2.0}],
+            include_sm=True,
+        )
+
+        self.assertEqual(distribution.observable.name, observable.name)
+        self.assertEqual([series.label for series in distribution.series], ["c3=1, d4=2", "SM"])
+        for bin_index, value in enumerate(distribution.series[0].values):
+            expected = float(bin_index + 1) * (10.0 + 2.0 * 1.0 - 0.1 * 2.0)
+            self.assertAlmostEqual(value, expected, places=8)
+        for bin_index, value in enumerate(distribution.series[1].values):
+            expected = float(bin_index + 1) * 10.0
+            self.assertAlmostEqual(value, expected, places=8)
+        self.assertTrue(np.all(distribution.series[0].errors >= 0.0))
+
+    def test_parameter_points_default_unspecified_couplings_to_sm(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+
+        points = parse_parameter_points(config, ["ct=0.5,c3=-0.25"])
+
+        self.assertEqual(points, [{"ct": 0.5, "c3": -0.25}])
+
+    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed")
+    def test_distribution_command_writes_publication_style_plot(self):
+        config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
+        points = generate_scan_points(config)
+        values = [point.values for point in points]
+        observable = config.observables[0]
+        fit_records = []
+        for bin_index in range(len(observable.bins) - 1):
+            scale = float(bin_index + 1)
+            y = np.asarray([scale * (10.0 + 2.0 * c3 - 0.1 * d4) for c3, d4 in values])
+            yerr = np.ones(len(values)) * 0.01
+            fit_records.append(fit_values(config, values, y, yerr, f"{observable.name}:bin{bin_index}").to_dict(config))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            fit_json = tmp_path / "hist_fit.json"
+            fit_json.write_text(json.dumps({"fits": fit_records}), encoding="utf-8")
+            output = tmp_path / "distribution.png"
+
+            with patch.dict(os.environ, {"MPLCONFIGDIR": str(tmp_path), "XDG_CACHE_HOME": str(tmp_path)}):
+                status = main(
+                    [
+                        "distribution",
+                        str(ROOT / "configs" / "gg_hhh_c3d4.toml"),
+                        "--input",
+                        str(fit_json),
+                        "--observable",
+                        observable.name,
+                        "--point",
+                        "c3=1,d4=2",
+                        "--output",
+                        str(output),
                     ]
                 )
 
