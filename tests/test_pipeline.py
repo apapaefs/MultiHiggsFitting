@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import gzip
+import importlib.util
 import io
+import json
 import os
 import tempfile
 import unittest
@@ -14,6 +16,7 @@ import numpy as np
 
 from multihiggs.cli import main
 from multihiggs.config import ScanConfig, load_config
+from multihiggs.contours import build_contour_data, parse_fixed_values
 from multihiggs.fit import fit_values, format_polynomial_report
 from multihiggs.grid import generate_scan_points
 from multihiggs.histograms import histogram_lhe
@@ -224,6 +227,90 @@ class PipelineTests(unittest.TestCase):
         result = fit_values(config, values, y, yerr, "synthetic")
         self.assertEqual(result.rank, len(config.fit.terms))
         self.assertAlmostEqual(result.sigma_sm, 2.0, places=8)
+
+    def test_contour_data_evaluates_two_axes_with_fixed_third_variable(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+        points = generate_scan_points(config)
+        values = [point.values for point in points]
+        y = np.asarray(
+            [
+                10.0 + 2.0 * ct + 3.0 * ct2 + 5.0 * c3 + 7.0 * ct * c3
+                for ct, ct2, c3 in values
+            ]
+        )
+        yerr = np.ones(len(values)) * 0.01
+        result = fit_values(config, values, y, yerr, "synthetic")
+
+        contour = build_contour_data(
+            config,
+            result.to_dict(config),
+            x_name="ct",
+            y_name="c3",
+            fixed_values={"ct2": 0.25},
+            x_range=(-0.5, 0.5),
+            y_range=(-1.0, 1.0),
+            x_points=3,
+            y_points=3,
+        )
+
+        self.assertEqual(contour.fixed_values, {"ct2": 0.25})
+        for y_index, c3 in enumerate(contour.y_values):
+            for x_index, ct in enumerate(contour.x_values):
+                expected = (10.0 + 2.0 * ct + 3.0 * 0.25 + 5.0 * c3 + 7.0 * ct * c3) / 10.0
+                self.assertAlmostEqual(contour.ratio[y_index, x_index], expected, places=8)
+
+    def test_fixed_values_reject_axis_overrides(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+
+        with self.assertRaisesRegex(ValueError, "axis variable"):
+            parse_fixed_values(config, ["ct=0.1"], axis_names={"ct", "c3"})
+
+    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed")
+    def test_contour_command_writes_plot_with_fixed_override(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+        points = generate_scan_points(config)
+        values = [point.values for point in points]
+        y = np.asarray(
+            [
+                10.0 + 2.0 * ct + 3.0 * ct2 + 5.0 * c3 + 7.0 * ct * c3
+                for ct, ct2, c3 in values
+            ]
+        )
+        yerr = np.ones(len(values)) * 0.01
+        result = fit_values(config, values, y, yerr, "synthetic")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            fit_json = tmp_path / "fit.json"
+            fit_json.write_text(
+                json.dumps({"fits": [result.to_dict(config)]}),
+                encoding="utf-8",
+            )
+            output = tmp_path / "ct_c3_contour.png"
+
+            with patch.dict(os.environ, {"MPLCONFIGDIR": str(tmp_path), "XDG_CACHE_HOME": str(tmp_path)}):
+                status = main(
+                    [
+                        "contour",
+                        str(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml"),
+                        "--input",
+                        str(fit_json),
+                        "--x",
+                        "ct",
+                        "--y",
+                        "c3",
+                        "--fix",
+                        "ct2=0.25",
+                        "--output",
+                        str(output),
+                        "--points",
+                        "5",
+                    ]
+                )
+
+            self.assertEqual(status, 0)
+            self.assertTrue(output.exists())
+            self.assertGreater(output.stat().st_size, 0)
 
     def test_polynomial_report_includes_original_blocks(self):
         config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")

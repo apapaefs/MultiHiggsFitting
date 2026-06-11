@@ -33,6 +33,13 @@ python3 -m multihiggs grid configs/gg_hhh_c3d4.toml
 The code expects `numpy` and `tomli` on Python 3.10. They are declared in
 `pyproject.toml`.
 
+The contour-plotting command also needs matplotlib. To install the plotting
+extra, use:
+
+```bash
+python3 -m pip install -e '.[plot]'
+```
+
 ## MadGraph Setup
 
 Install the basic build tools used by MG5/aMC and generated matrix elements:
@@ -249,6 +256,32 @@ That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
 to the constant term, monomial coefficients in fitted variables such as
 `k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
 
+Plot a normalized contour for any two configured coupling variables:
+
+```bash
+multihiggs contour configs/gg_hhhh_c3d4.toml --x c3 --y d4
+```
+
+By default the command reads `outputs/<process>/fit.json`, plots the `xsec`
+fit if present, scans each axis over the configured fit range converted back
+to the scan variable, and fixes every other configured coupling at its
+`sm_value`. Override fixed non-axis variables with repeatable `--fix`
+arguments:
+
+```bash
+multihiggs contour configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --x ct --y c3 --fix ct2=0.25
+```
+
+Use explicit ranges to reproduce wider planes:
+
+```bash
+multihiggs contour configs/gg_hhhh_c3d4.toml \
+  --x c3 --y d4 --x-range -30 30 --y-range -700 700 \
+  --output outputs/gg_4h/hhhh_c3_d4_contour.png \
+  --pdf-output outputs/gg_4h/hhhh_c3_d4_contour.pdf
+```
+
 End-to-end example for a new run-number campaign:
 
 ```bash
@@ -350,6 +383,14 @@ Fit every histogram bin with the same polynomial basis:
 multihiggs fit configs/gg_hhh_c3d4.toml \
   --input outputs/gg_hhh/histograms.csv \
   --output outputs/gg_hhh/hist_fit.json
+```
+
+Plot one fitted histogram bin by selecting its fit label:
+
+```bash
+multihiggs contour configs/gg_hhh_c3d4.toml \
+  --input outputs/gg_hhh/hist_fit.json \
+  --label h_pt:bin0 --x c3 --y d4
 ```
 
 For per-object observables such as `h_pt` with `which = "all"`, the histogram

@@ -6,6 +6,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from .config import load_config
+from .contours import (
+    build_contour_data,
+    load_fit_json,
+    parse_fixed_values,
+    safe_filename_piece,
+    select_fit_record,
+    write_contour_plot,
+)
 from .fit import fit_results_csv, format_polynomial_report
 from .grid import generate_scan_points
 from .histograms import write_histogram_csv
@@ -74,6 +82,39 @@ def main(argv: list[str] | None = None) -> int:
         help="Print old-style polynomial coefficient blocks after fitting",
     )
 
+    contour_parser = add_config_command(subparsers, "contour", "Plot a two-variable normalized fit contour")
+    contour_parser.add_argument("-i", "--input", type=Path, help="Fit JSON to plot; defaults to fit.json")
+    contour_parser.add_argument("-o", "--output", type=Path, help="Output image path")
+    contour_parser.add_argument("--pdf-output", type=Path, help="Optional PDF output path")
+    contour_parser.add_argument("--label", help="Fit label to plot when the JSON contains multiple fits")
+    contour_parser.add_argument("--x", required=True, help="Configured coupling to use on the x axis")
+    contour_parser.add_argument("--y", required=True, help="Configured coupling to use on the y axis")
+    contour_parser.add_argument(
+        "--fix",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Fix a non-axis coupling to a scan-variable value; may be repeated",
+    )
+    contour_parser.add_argument(
+        "--x-range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        help="Override the x-axis scan-variable range",
+    )
+    contour_parser.add_argument(
+        "--y-range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        help="Override the y-axis scan-variable range",
+    )
+    contour_parser.add_argument("--points", type=int, default=201, help="Default grid points per axis")
+    contour_parser.add_argument("--x-points", type=int, help="Grid points on the x axis")
+    contour_parser.add_argument("--y-points", type=int, help="Grid points on the y axis")
+    contour_parser.add_argument("--linear", action="store_true", help="Use a linear color scale")
+
     infer_parser = add_config_command(
         subparsers,
         "infer-terms",
@@ -113,6 +154,23 @@ def main(argv: list[str] | None = None) -> int:
         return command_hist(config, args.output, args.observables, args.run_numbers, args.min_events)
     if args.command == "fit":
         return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events)
+    if args.command == "contour":
+        return command_contour(
+            config,
+            args.input,
+            args.output,
+            args.pdf_output,
+            args.label,
+            args.x,
+            args.y,
+            args.fix,
+            args.x_range,
+            args.y_range,
+            args.points,
+            args.x_points,
+            args.y_points,
+            not args.linear,
+        )
     if args.command == "infer-terms":
         return command_infer_terms(config, args.process_dir, not args.no_update_config)
     raise AssertionError(args.command)
@@ -249,6 +307,54 @@ def command_fit(
         for result in results:
             print()
             print(format_polynomial_report(config, result))
+    return 0
+
+
+def command_contour(
+    config,
+    input_path: Path | None,
+    output: Path | None,
+    pdf_output: Path | None,
+    label: str | None,
+    x_name: str,
+    y_name: str,
+    raw_fixed_values: list[str] | None,
+    x_range: list[float] | None,
+    y_range: list[float] | None,
+    points: int,
+    x_points: int | None,
+    y_points: int | None,
+    log_scale: bool,
+) -> int:
+    input_path = input_path or default_path(config, "fit.json")
+    payload = load_fit_json(input_path)
+    fit_record = select_fit_record(payload, label)
+    fixed_values = parse_fixed_values(config, raw_fixed_values, axis_names={x_name, y_name})
+    contour = build_contour_data(
+        config,
+        fit_record,
+        x_name=x_name,
+        y_name=y_name,
+        fixed_values=fixed_values,
+        x_range=None if x_range is None else (x_range[0], x_range[1]),
+        y_range=None if y_range is None else (y_range[0], y_range[1]),
+        x_points=x_points or points,
+        y_points=y_points or points,
+    )
+    label_piece = safe_filename_piece(contour.fit_label)
+    output = output or default_path(config, f"{label_piece}_{contour.x_name}_{contour.y_name}_contour.png")
+    write_contour_plot(config, contour, output, log_scale=log_scale)
+    print(f"Wrote contour plot to {output}")
+    if pdf_output is not None:
+        write_contour_plot(config, contour, pdf_output, log_scale=log_scale)
+        print(f"Wrote contour plot to {pdf_output}")
+    print(
+        f"Plotted {contour.fit_label}: {contour.x_name} vs {contour.y_name}, "
+        f"ratio range {float(contour.ratio.min()):.6g} to {float(contour.ratio.max()):.6g}"
+    )
+    if contour.fixed_values:
+        fixed_text = ", ".join(f"{name}={value:g}" for name, value in sorted(contour.fixed_values.items()))
+        print(f"Fixed: {fixed_text}")
     return 0
 
 
