@@ -256,31 +256,8 @@ That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
 to the constant term, monomial coefficients in fitted variables such as
 `k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
 
-Plot a normalized contour for any two configured coupling variables:
-
-```bash
-multihiggs contour configs/gg_hhhh_c3d4.toml --x c3 --y d4
-```
-
-By default the command reads `outputs/<process>/fit.json`, plots the `xsec`
-fit if present, scans each axis over the configured fit range converted back
-to the scan variable, and fixes every other configured coupling at its
-`sm_value`. Override fixed non-axis variables with repeatable `--fix`
-arguments:
-
-```bash
-multihiggs contour configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --x ct --y c3 --fix ct2=0.25
-```
-
-Use explicit ranges to reproduce wider planes:
-
-```bash
-multihiggs contour configs/gg_hhhh_c3d4.toml \
-  --x c3 --y d4 --x-range -30 30 --y-range -700 700 \
-  --output outputs/gg_4h/hhhh_c3_d4_contour.png \
-  --pdf-output outputs/gg_4h/hhhh_c3_d4_contour.pdf
-```
+The fitted result can also be plotted as a normalized two-variable contour;
+see [Contour Plots](#contour-plots).
 
 End-to-end example for a new run-number campaign:
 
@@ -385,16 +362,58 @@ multihiggs fit configs/gg_hhh_c3d4.toml \
   --output outputs/gg_hhh/hist_fit.json
 ```
 
-Plot one fitted histogram bin by selecting its fit label:
+For per-object observables such as `h_pt` with `which = "all"`, the histogram
+integral is multiplicity times the event cross section.
+
+## Contour Plots
+
+After fitting, use `multihiggs contour` to plot
+`sigma(axis_1, axis_2) / sigma_SM` for any two configured coupling variables:
+
+```bash
+multihiggs contour configs/gg_hhhh_c3d4.toml --x c3 --y d4
+```
+
+By default this reads `outputs/<process>/fit.json`, selects the `xsec` fit if
+present, writes `outputs/<process>/<label>_<x>_<y>_contour.png`, and scans
+each axis over the configured fit range converted back to the scan variable.
+The axis names can be the coupling `name`, MadGraph `parameter`, or
+`fit_name` from the TOML file.
+
+For HHHH over the wider `c3,d4` plane:
+
+```bash
+multihiggs contour configs/gg_hhhh_c3d4.toml \
+  --x c3 --y d4 \
+  --x-range -30 30 --y-range -700 700 \
+  --output outputs/gg_4h/hhhh_c3_d4_contour.png \
+  --pdf-output outputs/gg_4h/hhhh_c3_d4_contour.pdf
+```
+
+All configured variables that are not on the axes are fixed at their
+configured `sm_value`, which is zero in the current example configs. Override
+those fixed values with repeatable `--fix name=value` arguments:
+
+```bash
+multihiggs contour configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --x ct --y c3 \
+  --fix ct2=0.25
+```
+
+For histogram fits, select the bin by label and pass the histogram fit JSON:
 
 ```bash
 multihiggs contour configs/gg_hhh_c3d4.toml \
   --input outputs/gg_hhh/hist_fit.json \
-  --label h_pt:bin0 --x c3 --y d4
+  --label h_pt:bin0 \
+  --x c3 --y d4
 ```
 
-For per-object observables such as `h_pt` with `which = "all"`, the histogram
-integral is multiplicity times the event cross section.
+Useful plot controls:
+
+- `--points N`: use `N` grid points on each axis.
+- `--x-points N` and `--y-points N`: set axis-specific grid sizes.
+- `--linear`: use a linear color scale instead of the default log scale.
 
 ## Tests
 
