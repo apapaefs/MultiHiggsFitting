@@ -170,11 +170,13 @@ def find_matrix_files(process_dir: Path) -> list[Path]:
     preferred = sorted(subprocess_dir.glob("P*/matrix*_orig.f"))
     if preferred:
         return preferred
-    return sorted(
+    candidates = [
         path
         for path in subprocess_dir.glob("P*/matrix*.f")
         if not path.name.startswith("template_")
-    )
+    ]
+    candidates.extend(sorted(subprocess_dir.glob("PV*/helas_calls_amp*.f")))
+    return sorted(candidates)
 
 
 def infer_matrix_amplitude_supports(
@@ -247,14 +249,15 @@ def call_tokens(statement: str, coupling_supports: dict[str, Support]) -> list[t
     token_pattern = re.compile(
         r"W\(\s*1\s*,\s*(?P<w>\d+)\s*\)"
         r"|AMP\(\s*(?P<amp>\d+)\s*\)"
+        r"|AMPL\(\s*(?P<ampl>\d+\s*,\s*\d+)\s*\)"
         r"|(?P<name>\b[A-Za-z_][A-Za-z0-9_]*\b)"
     )
     tokens: list[tuple[str, str]] = []
     for token in token_pattern.finditer(args):
         if token.group("w"):
             tokens.append(("W", token.group("w")))
-        elif token.group("amp"):
-            tokens.append(("AMP", token.group("amp")))
+        elif token.group("amp") or token.group("ampl"):
+            tokens.append(("AMP", token.group("amp") or token.group("ampl").replace(" ", "")))
         else:
             name = token.group("name")
             if name in coupling_supports:

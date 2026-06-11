@@ -556,6 +556,41 @@ exit 0
             self.assertIn("  [1, 1],", report)
             self.assertTrue(report.rstrip().endswith("WARNING: CHECK inferred fit terms before using them."))
 
+    def test_infers_terms_from_loop_induced_helas_ampl_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            process_dir = Path(tmpdir) / "proc"
+            model_dir = process_dir / "bin" / "internal" / "ufomodel"
+            matrix_dir = process_dir / "SubProcesses" / "PV0_0_1_gg_hh"
+            model_dir.mkdir(parents=True)
+            matrix_dir.mkdir(parents=True)
+            (model_dir / "couplings.py").write_text(
+                """
+GC_30 = Coupling(name = 'GC_30',
+                 value = '-6*complex(0,1)*lam*v*(1 + c3)',
+                 order = {'QED':1})
+""",
+                encoding="utf-8",
+            )
+            (matrix_dir / "helas_calls_ampb_1.f").write_text(
+                """
+      SUBROUTINE ML5_0_0_1_HELAS_CALLS_AMPB_1(P,NHEL,H,IC)
+      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1*IC(1),W(1,1))
+      CALL VXXXXX(P(0,2),ZERO,NHEL(2),-1*IC(2),W(1,2))
+      CALL SXXXXX(P(0,3),+1*IC(3),W(1,3))
+      CALL SXXXXX(P(0,4),+1*IC(4),W(1,4))
+      CALL SSS1_1(W(1,3),W(1,4),GC_30,MDL_MH,MDL_WH,W(1,5))
+      CALL VVS1_0(W(1,1),W(1,2),W(1,5),R2_GGHB,AMPL(1,2))
+      END
+""",
+                encoding="utf-8",
+            )
+
+            result = infer_terms_from_process_dir(process_dir, ("c3",))
+
+            self.assertEqual(result.amplitude_terms, ((0,), (1,)))
+            self.assertEqual(result.cross_section_terms, ((0,), (1,), (2,)))
+            self.assertEqual(result.amplitude_support_counts[((0,), (1,))], 1)
+
     def test_infer_terms_command_prints_check_warning(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_root = Path(tmpdir)
