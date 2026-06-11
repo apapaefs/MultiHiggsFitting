@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import replace
 from pathlib import Path
 
 from .config import load_config
@@ -10,7 +11,7 @@ from .grid import generate_scan_points
 from .histograms import write_histogram_csv
 from .madgraph import run_madevent_points, run_mg5, write_madevent_card, write_process_card
 from .results import discover_completed_runs, write_results_csv
-from .term_inference import format_inferred_terms, infer_terms_from_process_dir
+from .term_inference import format_inferred_terms, infer_terms_from_process_dir, update_config_fit_terms
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,6 +20,10 @@ def main(argv: list[str] | None = None) -> int:
 
     grid_parser = add_config_command(subparsers, "grid", "Write the configured scan grid")
     grid_parser.add_argument("-o", "--output", type=Path)
+    grid_parser.add_argument(
+        "--run-number",
+        help="Override [scan].run_number for generated run names without editing the config",
+    )
 
     process_parser = add_config_command(subparsers, "generate-process", "Write or run an MG5 process card")
     process_parser.add_argument("-o", "--output", type=Path)
@@ -30,6 +35,10 @@ def main(argv: list[str] | None = None) -> int:
     scan_parser.add_argument("--max-runs", type=int)
     scan_parser.add_argument("--force", action="store_true", help="Do not skip existing run directories")
     scan_parser.add_argument("--run", action="store_true", help="Run madevent after writing the card")
+    scan_parser.add_argument(
+        "--run-number",
+        help="Override [scan].run_number for generated run names without editing the config",
+    )
 
     collect_parser = add_config_command(subparsers, "collect", "Collect completed run cross sections")
     collect_parser.add_argument("-o", "--output", type=Path)
@@ -75,15 +84,22 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="Override the generated process directory; defaults to [process].mg5_path / output",
     )
+    infer_parser.add_argument(
+        "--no-update-config",
+        action="store_true",
+        help="Only print inferred terms; do not rewrite [fit].terms in the config",
+    )
 
     args = parser.parse_args(argv)
     config = load_config(args.config)
 
     if args.command == "grid":
+        config = with_run_number(config, args.run_number)
         return command_grid(config, args.output)
     if args.command == "generate-process":
         return command_generate_process(config, args.output, args.force_output, args.run)
     if args.command == "scan":
+        config = with_run_number(config, args.run_number)
         return command_scan(config, args.output, args.max_runs, args.force, args.run)
     if args.command == "collect":
         return command_collect(
@@ -98,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fit":
         return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events)
     if args.command == "infer-terms":
-        return command_infer_terms(config, args.process_dir)
+        return command_infer_terms(config, args.process_dir, not args.no_update_config)
     raise AssertionError(args.command)
 
 
@@ -106,6 +122,12 @@ def add_config_command(subparsers, name: str, help_text: str):
     command = subparsers.add_parser(name, help=help_text)
     command.add_argument("config", type=Path)
     return command
+
+
+def with_run_number(config, run_number: str | None):
+    if run_number is None:
+        return config
+    return replace(config, scan=replace(config.scan, run_number=str(run_number)))
 
 
 def default_path(config, filename: str) -> Path:
@@ -230,11 +252,25 @@ def command_fit(
     return 0
 
 
-def command_infer_terms(config, process_dir: Path | None) -> int:
+def command_infer_terms(config, process_dir: Path | None, update_config: bool) -> int:
     process_dir = process_dir or config.process_dir
     result = infer_terms_from_process_dir(
         process_dir,
         tuple(coupling.parameter for coupling in config.couplings),
     )
     print(format_inferred_terms(result))
+    if update_config:
+        update_config_fit_terms(config.path, result.cross_section_terms)
+        print()
+        print(f"WARNING: Updated [fit].terms in {config.path}.")
+        print("WARNING: Subsequent `fit` commands will use these inferred terms from the config file.")
+        npoints = len(generate_scan_points(config))
+        nterms = len(result.cross_section_terms)
+        if npoints < nterms:
+            print(
+                "WARNING: "
+                f"The configured scan has {npoints} point(s), but the inferred fit uses {nterms} term(s). "
+                "Increase the scan grid before fitting, or the fit will be underdetermined."
+            )
+        print("WARNING: CHECK the inferred terms before using them for production fits.")
     return 0

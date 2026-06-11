@@ -153,13 +153,20 @@ class PipelineTests(unittest.TestCase):
         points = generate_scan_points(config)
         self.assertEqual(config.model, "heft_loop_sm_restricted5")
         self.assertEqual(config.generate, "g g > t t~ h h h")
-        self.assertEqual(len(points), 27)
+        self.assertEqual(len(points), 105)
         self.assertEqual(points[0].values, (0.0, 0.0, 0.0))
         self.assertEqual([coupling.name for coupling in config.couplings], ["ct", "ct2", "c3"])
         self.assertEqual([coupling.parameter for coupling in config.couplings], ["CT1", "CT2", "D3"])
+        self.assertEqual([coupling.points for coupling in config.couplings], [7, 3, 5])
         self.assertEqual(config.couplings[0].fit_range, (-0.5, 0.5))
+        self.assertEqual(config.scan.madgraph.accuracy, 0.01)
+        self.assertEqual(config.scan.madgraph.points, 1000)
+        self.assertEqual(config.scan.madgraph.iterations, 5)
         self.assertEqual(config.scan.extra_set_commands, ["set CT3 0.0", "set D4 0.0"])
-        self.assertEqual(len(config.fit.terms), 27)
+        self.assertEqual(len(config.fit.terms), 45)
+        self.assertEqual(max(term[0] for term in config.fit.terms), 6)
+        self.assertEqual(max(term[1] for term in config.fit.terms), 2)
+        self.assertEqual(max(term[2] for term in config.fit.terms), 4)
 
     def test_scan_defaults_to_ten_thousand_events(self):
         scan = ScanConfig.from_dict({})
@@ -169,6 +176,44 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(scan.event_minimum, 5000)
         scan = ScanConfig.from_dict({"nevents": 5000, "min_events": 1000})
         self.assertEqual(scan.event_minimum, 1000)
+
+    def test_grid_command_accepts_run_number_override(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "grid.csv"
+
+            status = main([
+                "grid",
+                str(ROOT / "configs" / "gg_hh_c3_validation.toml"),
+                "-o",
+                str(output),
+                "--run-number",
+                "7",
+            ])
+
+            self.assertEqual(status, 0)
+            text = output.read_text(encoding="utf-8")
+            self.assertIn("run_gg_hh_c3_validation_7_0.0", text)
+            self.assertNotIn("run_gg_hh_c3_validation_1_0.0", text)
+
+    def test_scan_command_accepts_run_number_override(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "scan.dcmd"
+
+            status = main([
+                "scan",
+                str(ROOT / "configs" / "gg_hh_c3_validation.toml"),
+                "-o",
+                str(output),
+                "--max-runs",
+                "1",
+                "--run-number",
+                "7",
+            ])
+
+            self.assertEqual(status, 0)
+            text = output.read_text(encoding="utf-8")
+            self.assertIn("launch run_gg_hh_c3_validation_7_0.0", text)
+            self.assertNotIn("launch run_gg_hh_c3_validation_1_0.0", text)
 
     def test_fit_recovers_synthetic_polynomial(self):
         config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
@@ -389,7 +434,63 @@ terms = [[0, 0]]
             output = stdout.getvalue()
             self.assertIn("terms = [", output)
             self.assertIn("  [2, 0],", output)
-            self.assertTrue(output.rstrip().endswith("WARNING: CHECK inferred fit terms before using them."))
+            self.assertIn("WARNING: Updated [fit].terms", output)
+            self.assertIn("WARNING: Subsequent `fit` commands will use these inferred terms", output)
+            self.assertIn("WARNING: CHECK the inferred terms before using them for production fits.", output)
+
+            updated = load_config(config_path)
+            self.assertEqual(
+                updated.fit.terms,
+                ((0, 0), (1, 0), (0, 1), (2, 0), (1, 1), (0, 2)),
+            )
+
+    def test_infer_terms_command_can_print_without_updating_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5"
+            process_dir = mg5_path / "proc"
+            write_generated_process_fixture(process_dir)
+            config_path = tmp_root / "config.toml"
+            config_path.write_text(
+                f"""
+[process]
+name = "fixture"
+mg5_path = "{mg5_path}"
+model = "loop_sm_c3d4"
+generate = "g g > h h"
+output = "proc"
+
+[[couplings]]
+name = "c3"
+parameter = "c3"
+fit_name = "c3"
+range = [-1.0, 1.0]
+points = 3
+
+[[couplings]]
+name = "d4"
+parameter = "d4"
+fit_name = "d4"
+range = [-1.0, 1.0]
+points = 3
+
+[fit]
+basis = "chebyshev"
+terms = [[0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = main(["infer-terms", str(config_path), "--no-update-config"])
+
+            self.assertEqual(status, 0)
+            output = stdout.getvalue()
+            self.assertIn("WARNING: CHECK inferred fit terms before using them.", output)
+            self.assertNotIn("Updated [fit].terms", output)
+            unchanged = load_config(config_path)
+            self.assertEqual(unchanged.fit.terms, ((0, 0),))
 
     def test_scan_reschedules_existing_runs_below_configured_event_minimum(self):
         with tempfile.TemporaryDirectory() as tmpdir:

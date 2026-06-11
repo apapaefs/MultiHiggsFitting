@@ -127,6 +127,13 @@ multihiggs grid configs/gg_hhh_c3d4.toml
 
 This writes `outputs/gg_hhh/scan_points.csv`.
 
+To preview the same grid with a different run-number label without editing the
+config:
+
+```bash
+multihiggs grid configs/gg_hhh_c3d4.toml --run-number 3
+```
+
 2. Generate an MG5 process card:
 
 ```bash
@@ -156,6 +163,16 @@ defaults to `10000` if omitted. To run madevent:
 multihiggs scan configs/gg_hhh_c3d4.toml --run
 ```
 
+To launch a new campaign label from the CLI, override `[scan].run_number`:
+
+```bash
+multihiggs scan configs/gg_hhh_c3d4.toml --run-number 3 --run
+```
+
+This changes generated run folders such as `run_gg_hhh_3_...` for that command
+only; it does not rewrite the TOML file. The `collect` and `hist`
+`--run-number` options still select existing run numbers to read.
+
 Useful development options:
 
 ```bash
@@ -184,11 +201,18 @@ support that the generated HELAS code implies:
 multihiggs infer-terms configs/gg_tthh_c3_validation.toml
 ```
 
-This prints the inferred amplitude support and the corresponding candidate
-`[fit].terms` for the cross section. Treat the output as a generated
-cross-check, not a proof: cancellations or model subtleties can still remove
-or add practical fit requirements, and the command ends with an explicit
-`WARNING: CHECK` reminder.
+This prints the inferred amplitude support and rewrites `[fit].terms` in the
+config file, so subsequent `fit` commands use the inferred cross-section terms.
+To inspect without modifying the config, use:
+
+```bash
+multihiggs infer-terms configs/gg_tthh_c3_validation.toml --no-update-config
+```
+
+Treat the output as a generated cross-check, not a proof: cancellations or
+model subtleties can still remove or add practical fit requirements. The
+command prints explicit warnings to check the inferred terms, and warns if the
+configured scan has fewer points than inferred fit terms.
 
 4. Collect completed cross sections:
 

@@ -20,9 +20,9 @@ extra_set_commands = [
 ]
 
 [scan.madgraph]
-accuracy = 0.1
-points = 500
-iterations = 3
+accuracy = 0.01
+points = 1000
+iterations = 5
 
 # The restricted5 UFO uses uppercase parameter names. These config names keep
 # the scan readable while setting CT1, CT2, and D3 in MadGraph.
@@ -34,7 +34,7 @@ name = "ct"
 parameter = "CT1"
 fit_name = "ct"
 range = [-0.5, 0.5]
-points = 3
+points = 7
 fit_offset = 0.0
 sm_value = 0.0
 
@@ -52,42 +52,60 @@ name = "c3"
 parameter = "D3"
 fit_name = "c3"
 range = [-1.0, 1.0]
-points = 3
+points = 5
 fit_offset = 0.0
 sm_value = 0.0
 
 [fit]
 basis = "chebyshev"
-# This 3x3x3 tensor basis is a validation starter for the example grid.
-# For a production fit, generate the process and run `multihiggs infer-terms`.
+# The inferred basis below comes from the generated process HELAS code.
+# Re-run `multihiggs infer-terms` after regenerating or changing the process.
 terms = [
   [0, 0, 0],
   [1, 0, 0],
-  [2, 0, 0],
   [0, 1, 0],
-  [1, 1, 0],
-  [2, 1, 0],
-  [0, 2, 0],
-  [1, 2, 0],
-  [2, 2, 0],
   [0, 0, 1],
+  [2, 0, 0],
+  [1, 1, 0],
   [1, 0, 1],
-  [2, 0, 1],
+  [0, 2, 0],
   [0, 1, 1],
-  [1, 1, 1],
-  [2, 1, 1],
-  [0, 2, 1],
-  [1, 2, 1],
-  [2, 2, 1],
   [0, 0, 2],
+  [3, 0, 0],
+  [2, 1, 0],
+  [2, 0, 1],
+  [1, 2, 0],
+  [1, 1, 1],
   [1, 0, 2],
-  [2, 0, 2],
+  [0, 2, 1],
   [0, 1, 2],
+  [0, 0, 3],
+  [4, 0, 0],
+  [3, 1, 0],
+  [3, 0, 1],
+  [2, 2, 0],
+  [2, 1, 1],
+  [2, 0, 2],
+  [1, 2, 1],
   [1, 1, 2],
-  [2, 1, 2],
+  [1, 0, 3],
   [0, 2, 2],
-  [1, 2, 2],
-  [2, 2, 2],
+  [0, 1, 3],
+  [0, 0, 4],
+  [5, 0, 0],
+  [4, 1, 0],
+  [4, 0, 1],
+  [3, 1, 1],
+  [3, 0, 2],
+  [2, 1, 2],
+  [2, 0, 3],
+  [1, 1, 3],
+  [1, 0, 4],
+  [6, 0, 0],
+  [5, 0, 1],
+  [4, 0, 2],
+  [3, 0, 3],
+  [2, 0, 4],
 ]
 normalize_to_sm = true
 

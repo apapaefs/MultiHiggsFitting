@@ -317,5 +317,56 @@ def format_inferred_terms(result: InferredTerms) -> str:
     return "\n".join(lines)
 
 
+def format_terms_block(terms: Iterable[Power]) -> str:
+    lines = ["terms = ["]
+    for power in terms:
+        lines.append(f"  {format_power(power)},")
+    lines.append("]")
+    return "\n".join(lines)
+
+
+def update_config_fit_terms(config_path: Path, terms: Iterable[Power]) -> Path:
+    config_path = Path(config_path)
+    text = config_path.read_text(encoding="utf-8")
+    fit_header = re.search(r"(?m)^\[fit\]\s*$", text)
+    if not fit_header:
+        raise TermInferenceError(f"Config has no [fit] section: {config_path}")
+
+    section_start = fit_header.end()
+    next_header = re.search(r"(?m)^\[", text[section_start:])
+    section_end = section_start + next_header.start() if next_header else len(text)
+    section = text[section_start:section_end]
+    terms_match = re.search(r"(?m)^[ \t]*terms[ \t]*=", section)
+    new_block = format_terms_block(terms)
+
+    if terms_match:
+        terms_start = section_start + terms_match.start()
+        value_start = section_start + terms_match.end()
+        bracket_start = text.find("[", value_start, section_end)
+        if bracket_start == -1:
+            raise TermInferenceError(f"Could not find [fit].terms list in {config_path}")
+        bracket_end = matching_bracket_end(text, bracket_start)
+        text = text[:terms_start] + new_block + text[bracket_end:]
+    else:
+        insertion = section_start
+        text = text[:insertion] + "\n" + new_block + "\n" + text[insertion:]
+
+    config_path.write_text(text, encoding="utf-8")
+    return config_path
+
+
+def matching_bracket_end(text: str, bracket_start: int) -> int:
+    depth = 0
+    for index in range(bracket_start, len(text)):
+        char = text[index]
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    raise TermInferenceError("Could not find end of terms list")
+
+
 def format_power(power: Power) -> str:
     return "[" + ", ".join(str(item) for item in power) + "]"
