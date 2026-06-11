@@ -13,6 +13,9 @@ from .basis import chebyshev_row
 from .config import CouplingConfig, ProjectConfig
 
 
+PLOT_TITLE_FONTSIZE = 13
+
+
 @dataclass(frozen=True)
 class ContourData:
     x_name: str
@@ -231,7 +234,7 @@ def write_contour_plot(
     ax.set_ylim((float(contour.y_values[0]), float(contour.y_values[-1])))
     ax.set_xlabel(format_axis_label(contour.x_name), fontsize=18)
     ax.set_ylabel(format_axis_label(contour.y_name), fontsize=18)
-    ax.set_title(make_plot_title(config, contour), fontsize=17)
+    ax.set_title(make_plot_title(config, contour), fontsize=PLOT_TITLE_FONTSIZE)
     ax.tick_params(axis="both", labelsize=14)
 
     cbar = fig.colorbar(filled, ax=ax)

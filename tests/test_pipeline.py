@@ -16,7 +16,7 @@ import numpy as np
 
 from multihiggs.cli import main
 from multihiggs.config import ScanConfig, load_config
-from multihiggs.contours import build_contour_data, parse_fixed_values
+from multihiggs.contours import PLOT_TITLE_FONTSIZE, build_contour_data, parse_fixed_values
 from multihiggs.fit import fit_values, format_polynomial_report
 from multihiggs.grid import generate_scan_points
 from multihiggs.histograms import histogram_lhe
@@ -264,6 +264,9 @@ class PipelineTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "axis variable"):
             parse_fixed_values(config, ["ct=0.1"], axis_names={"ct", "c3"})
+
+    def test_contour_plot_title_uses_smaller_font(self):
+        self.assertEqual(PLOT_TITLE_FONTSIZE, 13)
 
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed")
     def test_contour_command_writes_plot_with_fixed_override(self):
