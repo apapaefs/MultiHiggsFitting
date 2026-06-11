@@ -163,6 +163,20 @@ multihiggs scan configs/gg_hhh_c3d4.toml --max-runs 3
 multihiggs scan configs/gg_hhh_c3d4.toml --force
 ```
 
+When running a scan, the pipeline launches selected points one at a time. If
+MadEvent reports the known zero-amplitude multichannel failure:
+
+```text
+Problem in the multi-channeling. All amp2 are zero but not the total matrix-element
+```
+
+the pipeline prints a warning, skips that point, and continues with the
+remaining selected points. This can happen at exact cancellation points, for
+example in `heft_loop_sm_restricted5` when `CT1 = -1` cancels the SM `ttH`
+Yukawa contribution while the other relevant MHEFT couplings are zero. The
+command exits nonzero after continuing so the incomplete scan is not mistaken
+for a fully successful run.
+
 After generating a process directory, inspect the matrix-element coupling
 support that the generated HELAS code implies:
 

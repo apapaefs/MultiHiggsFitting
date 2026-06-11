@@ -8,7 +8,7 @@ from .config import load_config
 from .fit import fit_results_csv, format_polynomial_report
 from .grid import generate_scan_points
 from .histograms import write_histogram_csv
-from .madgraph import run_madevent, run_mg5, write_madevent_card, write_process_card
+from .madgraph import run_madevent_points, run_mg5, write_madevent_card, write_process_card
 from .results import discover_completed_runs, write_results_csv
 from .term_inference import format_inferred_terms, infer_terms_from_process_dir
 
@@ -164,7 +164,7 @@ def command_scan(
         return 0
     if not selected:
         return 0
-    return run_madevent(config, output)
+    return run_madevent_points(config, selected, output)
 
 
 def command_collect(

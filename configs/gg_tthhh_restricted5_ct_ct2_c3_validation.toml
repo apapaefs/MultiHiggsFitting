@@ -26,11 +26,14 @@ iterations = 3
 
 # The restricted5 UFO uses uppercase parameter names. These config names keep
 # the scan readable while setting CT1, CT2, and D3 in MadGraph.
+# Avoid CT1 = -1 in this validation grid: it cancels the SM top Yukawa
+# contribution when CT2 = D3 = 0 and MadEvent can fail in that zero-amplitude
+# corner during multichannel integration.
 [[couplings]]
 name = "ct"
 parameter = "CT1"
 fit_name = "ct"
-range = [-1.0, 1.0]
+range = [-0.5, 0.5]
 points = 3
 fit_offset = 0.0
 sm_value = 0.0

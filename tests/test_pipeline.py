@@ -22,6 +22,7 @@ from multihiggs.madgraph import (
     mg_runtime_env,
     patch_macos_madloop_rpaths,
     run_madevent,
+    run_madevent_points,
     run_mg5,
     write_madevent_card,
 )
@@ -156,6 +157,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(points[0].values, (0.0, 0.0, 0.0))
         self.assertEqual([coupling.name for coupling in config.couplings], ["ct", "ct2", "c3"])
         self.assertEqual([coupling.parameter for coupling in config.couplings], ["CT1", "CT2", "D3"])
+        self.assertEqual(config.couplings[0].fit_range, (-0.5, 0.5))
         self.assertEqual(config.scan.extra_set_commands, ["set CT3 0.0", "set D4 0.0"])
         self.assertEqual(len(config.fit.terms), 27)
 
@@ -281,6 +283,46 @@ class PipelineTests(unittest.TestCase):
                 text = makefile.read_text(encoding="utf-8")
                 self.assertEqual(text.count("$(RPATH_LIBS)"), 1)
                 self.assertIn("$(LDFLAGS) $(RPATH_LIBS)", text)
+
+    def test_madevent_points_warns_and_continues_after_zero_amplitude_failure(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5_aMC_v3_5_15"
+            process_dir = mg5_path / "proc"
+            (process_dir / "bin").mkdir(parents=True)
+
+            config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+            config = replace(config, mg5_path=mg5_path.relative_to(ROOT), output="proc")
+            bad_point = replace(generate_scan_points(config)[0], values=(-1.0, 0.0, 0.0), texts=("-1.0", "0.0", "0.0"))
+            good_point = replace(generate_scan_points(config)[0], values=(0.5, 0.0, 0.0), texts=("0.5", "0.0", "0.0"))
+
+            madevent_bin = process_dir / "bin" / "madevent"
+            madevent_bin.write_text(
+                f"""#!/bin/sh
+grep '^launch ' "$1" >> attempts.log
+if grep -q 'set CT1 -1.0' "$1"; then
+  cat > {bad_point.run_name(config)}_tag_1_debug.log <<'EOF'
+Problem in the multi-channeling. All amp2 are zero but not the total matrix-element
+EOF
+  exit 1
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            madevent_bin.chmod(0o755)
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = run_madevent_points(config, [bad_point, good_point], tmp_root / "scan.dcmd")
+
+            self.assertEqual(status, 2)
+            output = stdout.getvalue()
+            self.assertIn("zero-amplitude multichannel issue", output)
+            self.assertIn("CT1 = -1 cancels the SM ttH Yukawa", output)
+            attempts = (process_dir / "attempts.log").read_text(encoding="utf-8")
+            self.assertIn(bad_point.run_name(config), attempts)
+            self.assertIn(good_point.run_name(config), attempts)
 
     def test_infers_terms_from_generated_matrix_source(self):
         with tempfile.TemporaryDirectory() as tmpdir:

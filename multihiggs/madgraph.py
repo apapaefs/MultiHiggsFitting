@@ -1,14 +1,26 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
 from .config import ProjectConfig
 from .grid import ScanPoint
 from .results import event_count
+
+
+ZERO_AMPLITUDE_MARKER = "Problem in the multi-channeling. All amp2 are zero but not the total matrix-element"
+
+
+@dataclass(frozen=True)
+class MadEventFailure:
+    point: ScanPoint
+    reason: str
+    logs: tuple[Path, ...]
 
 
 def mg_runtime_env(mg5_path: Path) -> dict[str, str]:
@@ -133,6 +145,118 @@ def run_madevent(config: ProjectConfig, command_file: Path) -> int:
     patch_macos_madloop_rpaths(process_dir)
     command = [str(process_dir / "bin" / "madevent"), str(command_file.resolve())]
     return _stream_subprocess(command, cwd=process_dir, env=mg_runtime_env(mg5_path))
+
+
+def run_madevent_points(config: ProjectConfig, points: Iterable[ScanPoint], command_file: Path) -> int:
+    active_card = command_file.with_name(command_file.stem + "_active.dcmd")
+    failures: list[MadEventFailure] = []
+    for point in points:
+        _, selected = write_madevent_card(config, [point], active_card, force=True)
+        if not selected:
+            continue
+        started_at = time.time()
+        status = run_madevent(config, active_card)
+        if status == 0:
+            continue
+        failure = diagnose_madevent_failure(config, point, since=started_at)
+        if failure and failure.reason == "zero_amplitude_multichannel":
+            print_zero_amplitude_warning(config, failure)
+            failures.append(failure)
+            continue
+        return status
+    if failures:
+        print()
+        print(
+            "WARNING: "
+            f"Skipped {len(failures)} MadEvent point(s) with zero-amplitude multichannel failures. "
+            "The scan continued, but it is incomplete; inspect the warning(s) above before fitting."
+        )
+        return 2
+    return 0
+
+
+def diagnose_madevent_failure(
+    config: ProjectConfig,
+    point: ScanPoint,
+    since: float | None = None,
+) -> MadEventFailure | None:
+    logs = find_failure_logs(config, point, ZERO_AMPLITUDE_MARKER, since=since)
+    if logs:
+        return MadEventFailure(point=point, reason="zero_amplitude_multichannel", logs=logs)
+    return None
+
+
+def print_zero_amplitude_warning(config: ProjectConfig, failure: MadEventFailure) -> None:
+    point = failure.point
+    print()
+    print(f"WARNING: MadEvent failed for {point.run_name(config)} with a zero-amplitude multichannel issue.")
+    print(
+        "MadEvent reported that all channel amplitudes were zero while the total matrix element was not. "
+        "This often happens at exact cancellation points where a coupling modifier removes the "
+        "interaction needed for this process."
+    )
+    print("The pipeline is skipping this point and continuing with the remaining selected points.")
+    print("Point: " + format_point(config, point))
+    hint = zero_amplitude_hint(config, point)
+    if hint:
+        print("Possible cause: " + hint)
+    if failure.logs:
+        print("Relevant log(s):")
+        for log in failure.logs[:5]:
+            print(f"  {log}")
+
+
+def zero_amplitude_hint(config: ProjectConfig, point: ScanPoint) -> str | None:
+    values = {coupling.parameter: value for coupling, value in zip(config.couplings, point.values)}
+    if config.model == "heft_loop_sm_restricted5" and abs(values.get("CT1", 999.0) + 1.0) < 1e-12:
+        return (
+            "in heft_loop_sm_restricted5, CT1 = -1 cancels the SM ttH Yukawa contribution. "
+            "If CT2, D3, CT3, and D4 are also zero, ttbar+HHH can sit in a zero-amplitude corner."
+        )
+    return None
+
+
+def format_point(config: ProjectConfig, point: ScanPoint) -> str:
+    pieces = []
+    for coupling, text in zip(config.couplings, point.texts):
+        if coupling.name == coupling.parameter:
+            pieces.append(f"{coupling.name}={text}")
+        else:
+            pieces.append(f"{coupling.name}={text} ({coupling.parameter})")
+    return ", ".join(pieces)
+
+
+def find_failure_logs(
+    config: ProjectConfig,
+    point: ScanPoint,
+    marker: str,
+    since: float | None = None,
+) -> tuple[Path, ...]:
+    process_dir = config.process_dir.resolve()
+    run_name = point.run_name(config)
+    direct_logs = [
+        process_dir / f"{run_name}_tag_1_debug.log",
+        process_dir / f"{run_name}_debug.log",
+    ]
+    matches = [path for path in direct_logs if file_contains(path, marker, since=since)]
+    if matches:
+        return tuple(matches)
+
+    subproc_dir = process_dir / "SubProcesses"
+    if not subproc_dir.exists():
+        return ()
+    for path in sorted(subproc_dir.glob("**/run*_app.log")):
+        if file_contains(path, marker, since=since):
+            matches.append(path)
+    return tuple(matches)
+
+
+def file_contains(path: Path, marker: str, since: float | None = None) -> bool:
+    if not path.exists():
+        return False
+    if since is not None and path.stat().st_mtime < since - 1.0:
+        return False
+    return marker in path.read_text(encoding="utf-8", errors="ignore")
 
 
 def patch_macos_madloop_rpaths(process_dir: Path, force: bool = False) -> None:
