@@ -8,11 +8,13 @@ from pathlib import Path
 from .config import load_config
 from .contours import (
     build_contour_data,
+    build_variation_data,
     load_fit_json,
     parse_fixed_values,
     safe_filename_piece,
     select_fit_record,
     write_contour_plot,
+    write_variation_plot,
 )
 from .distributions import (
     build_distribution_data,
@@ -121,6 +123,33 @@ def main(argv: list[str] | None = None) -> int:
     contour_parser.add_argument("--y-points", type=int, help="Grid points on the y axis")
     contour_parser.add_argument("--linear", action="store_true", help="Use a linear color scale")
 
+    variation_parser = add_config_command(
+        subparsers,
+        "variation",
+        "Plot a one-variable normalized cross-section variation",
+    )
+    variation_parser.add_argument("-i", "--input", type=Path, help="Fit JSON to plot; defaults to fit.json")
+    variation_parser.add_argument("-o", "--output", type=Path, help="Output image path")
+    variation_parser.add_argument("--pdf-output", type=Path, help="Optional PDF output path")
+    variation_parser.add_argument("--label", help="Fit label to plot when the JSON contains multiple fits")
+    variation_parser.add_argument("--x", required=True, help="Configured coupling to scan on the x axis")
+    variation_parser.add_argument(
+        "--fix",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Fix a non-axis coupling to a scan-variable value; may be repeated",
+    )
+    variation_parser.add_argument(
+        "--x-range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        help="Override the x-axis scan-variable range",
+    )
+    variation_parser.add_argument("--points", type=int, default=201, help="Number of points on the x axis")
+    variation_parser.add_argument("--log-y", action="store_true", help="Use a logarithmic y axis")
+
     distribution_parser = add_config_command(
         subparsers,
         "distribution",
@@ -196,6 +225,19 @@ def main(argv: list[str] | None = None) -> int:
             args.x_points,
             args.y_points,
             not args.linear,
+        )
+    if args.command == "variation":
+        return command_variation(
+            config,
+            args.input,
+            args.output,
+            args.pdf_output,
+            args.label,
+            args.x,
+            args.fix,
+            args.x_range,
+            args.points,
+            args.log_y,
         )
     if args.command == "distribution":
         return command_distribution(
@@ -392,6 +434,47 @@ def command_contour(
     )
     if contour.fixed_values:
         fixed_text = ", ".join(f"{name}={value:g}" for name, value in sorted(contour.fixed_values.items()))
+        print(f"Fixed: {fixed_text}")
+    return 0
+
+
+def command_variation(
+    config,
+    input_path: Path | None,
+    output: Path | None,
+    pdf_output: Path | None,
+    label: str | None,
+    x_name: str,
+    raw_fixed_values: list[str] | None,
+    x_range: list[float] | None,
+    points: int,
+    log_y: bool,
+) -> int:
+    input_path = input_path or default_path(config, "fit.json")
+    payload = load_fit_json(input_path)
+    fit_record = select_fit_record(payload, label)
+    fixed_values = parse_fixed_values(config, raw_fixed_values, axis_names={x_name})
+    variation = build_variation_data(
+        config,
+        fit_record,
+        x_name=x_name,
+        fixed_values=fixed_values,
+        x_range=None if x_range is None else (x_range[0], x_range[1]),
+        points=points,
+    )
+    label_piece = safe_filename_piece(variation.fit_label)
+    output = output or default_path(config, f"{label_piece}_{variation.x_name}_variation.png")
+    write_variation_plot(config, variation, output, log_y=log_y)
+    print(f"Wrote variation plot to {output}")
+    if pdf_output is not None:
+        write_variation_plot(config, variation, pdf_output, log_y=log_y)
+        print(f"Wrote variation plot to {pdf_output}")
+    print(
+        f"Plotted {variation.fit_label}: {variation.x_name}, "
+        f"ratio range {float(variation.ratio.min()):.6g} to {float(variation.ratio.max()):.6g}"
+    )
+    if variation.fixed_values:
+        fixed_text = ", ".join(f"{name}={value:g}" for name, value in sorted(variation.fixed_values.items()))
         print(f"Fixed: {fixed_text}")
     return 0
 

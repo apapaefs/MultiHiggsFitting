@@ -27,6 +27,15 @@ class ContourData:
     fit_label: str
 
 
+@dataclass(frozen=True)
+class VariationData:
+    x_name: str
+    x_values: np.ndarray
+    ratio: np.ndarray
+    fixed_values: dict[str, float]
+    fit_label: str
+
+
 def load_fit_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -155,6 +164,54 @@ def build_contour_data(
     )
 
 
+def build_variation_data(
+    config: ProjectConfig,
+    fit_record: dict[str, Any],
+    x_name: str,
+    fixed_values: dict[str, float] | None = None,
+    x_range: tuple[float, float] | None = None,
+    points: int = 201,
+) -> VariationData:
+    if points < 2:
+        raise ValueError("Variation scans need at least two points")
+
+    x_coupling = resolve_coupling(config, x_name)
+    fixed_values = fixed_values or {}
+    for fixed_name in fixed_values:
+        fixed_coupling = resolve_coupling(config, fixed_name)
+        if fixed_coupling.name == x_coupling.name:
+            raise ValueError(f"Cannot fix axis variable {fixed_name!r}")
+
+    x_range = x_range or default_scan_range(x_coupling)
+    x_values = np.linspace(float(x_range[0]), float(x_range[1]), points)
+    ratio = np.zeros(points, dtype=float)
+
+    coefficients = np.asarray(fit_record["coefficients"], dtype=float)
+    sigma_sm = float(fit_record.get("sigma_sm_pb") or 0.0)
+    if not math.isfinite(sigma_sm) or abs(sigma_sm) < 1e-30:
+        raise ValueError("Selected fit has zero or non-finite sigma_sm_pb")
+
+    coupling_index = {coupling.name: index for index, coupling in enumerate(config.couplings)}
+    x_index = coupling_index[x_coupling.name]
+    base_values = [coupling.sm_value for coupling in config.couplings]
+    clean_fixed_values = {resolve_coupling(config, name).name: float(value) for name, value in fixed_values.items()}
+    for fixed_name, fixed_value in clean_fixed_values.items():
+        base_values[coupling_index[fixed_name]] = fixed_value
+
+    for index, x_value in enumerate(x_values):
+        values = list(base_values)
+        values[x_index] = float(x_value)
+        ratio[index] = float(np.dot(chebyshev_row(tuple(values), config), coefficients) / sigma_sm)
+
+    return VariationData(
+        x_name=x_coupling.name,
+        x_values=x_values,
+        ratio=ratio,
+        fixed_values=clean_fixed_values,
+        fit_label=str(fit_record.get("label", "fit")),
+    )
+
+
 def default_scan_range(coupling: CouplingConfig) -> tuple[float, float]:
     return (
         coupling.scan_from_fit(coupling.fit_range[0]),
@@ -247,6 +304,64 @@ def write_contour_plot(
     return output_path
 
 
+def write_variation_plot(
+    config: ProjectConfig,
+    variation: VariationData,
+    output_path: Path,
+    *,
+    log_y: bool = False,
+) -> Path:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as exc:  # pragma: no cover - depends on local environment
+        raise RuntimeError(
+            "The variation command requires matplotlib. Install it with "
+            "`python3 -m pip install -e '.[plot]'` or `python3 -m pip install matplotlib`."
+        ) from exc
+
+    fig, ax = plt.subplots(figsize=(7.2, 5.0), constrained_layout=True)
+    ax.plot(
+        variation.x_values,
+        variation.ratio,
+        color="#1f77b4",
+        linewidth=2.0,
+        label=variation.fit_label,
+    )
+    ax.axhline(1.0, color="black", linestyle="--", linewidth=1.1, label="SM")
+
+    if log_y:
+        ax.set_yscale("log")
+    else:
+        finite = variation.ratio[np.isfinite(variation.ratio)]
+        if len(finite) > 0:
+            min_value = min(float(np.min(finite)), 1.0)
+            max_value = max(float(np.max(finite)), 1.0)
+            if min_value == max_value:
+                padding = max(abs(min_value) * 0.1, 1e-12)
+            else:
+                padding = 0.08 * (max_value - min_value)
+            ax.set_ylim(min_value - padding, max_value + padding)
+
+    x_coupling = resolve_coupling(config, variation.x_name)
+    ax.set_xlim((float(variation.x_values[0]), float(variation.x_values[-1])))
+    ax.axvline(x_coupling.sm_value, color="0.45", linestyle=":", linewidth=1.0)
+    ax.set_xlabel(format_axis_label(variation.x_name), fontsize=15)
+    ax.set_ylabel(r"$\sigma/\sigma_{\rm SM}$", fontsize=15)
+    ax.set_title(make_variation_plot_title(config, variation), fontsize=PLOT_TITLE_FONTSIZE)
+    ax.tick_params(axis="both", labelsize=12)
+    ax.grid(True, which="major", color="0.88", linewidth=0.8)
+    ax.grid(True, which="minor", color="0.94", linewidth=0.5)
+    ax.legend(frameon=False, fontsize=11)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300)
+    plt.close(fig)
+    return output_path
+
+
 def make_log_levels(positive_values: np.ndarray) -> np.ndarray:
     min_value = float(np.min(positive_values))
     max_value = float(np.max(positive_values))
@@ -288,6 +403,14 @@ def make_plot_title(config: ProjectConfig, contour: ContourData) -> str:
     title = f"{config.name} at {config.scan.energy_tev:g} TeV: {contour.fit_label}"
     if contour.fixed_values:
         fixed_text = ", ".join(f"{name}={value:g}" for name, value in sorted(contour.fixed_values.items()))
+        title += f" ({fixed_text})"
+    return title
+
+
+def make_variation_plot_title(config: ProjectConfig, variation: VariationData) -> str:
+    title = f"{config.name} at {config.scan.energy_tev:g} TeV: {variation.fit_label}"
+    if variation.fixed_values:
+        fixed_text = ", ".join(f"{name}={value:g}" for name, value in sorted(variation.fixed_values.items()))
         title += f" ({fixed_text})"
     return title
 

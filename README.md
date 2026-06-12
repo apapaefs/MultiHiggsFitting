@@ -447,6 +447,36 @@ Useful plot controls:
 - `--x-points N` and `--y-points N`: set axis-specific grid sizes.
 - `--linear`: use a linear color scale instead of the default log scale.
 
+## One-Dimensional Variations
+
+Use `multihiggs variation` to plot a fitted one-dimensional cross-section
+ratio, `sigma(x) / sigma_SM`, for any configured coupling variable:
+
+```bash
+multihiggs variation configs/gg_hhhh_c3d4.toml --x c3
+```
+
+By default this reads `outputs/<process>/fit.json`, selects the `xsec` fit if
+present, writes `outputs/<process>/<label>_<x>_variation.png`, and scans the
+chosen variable over its configured fit range converted back to the scan
+variable. All other configured variables are fixed at their TOML `sm_value`.
+
+Override the fixed non-axis parameters with repeatable `--fix name=value`
+arguments:
+
+```bash
+multihiggs variation configs/gg_hhhh_c3d4.toml \
+  --x c3 \
+  --fix d4=100 \
+  --x-range -30 30 \
+  --points 301 \
+  --output outputs/gg_4h/hhhh_c3_variation_d4_100.png \
+  --pdf-output outputs/gg_4h/hhhh_c3_variation_d4_100.pdf
+```
+
+For fits with multiple labels, select one with `--label`. Use `--log-y` for a
+logarithmic ratio axis.
+
 ## Tests
 
 ```bash

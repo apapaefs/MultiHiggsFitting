@@ -16,7 +16,12 @@ import numpy as np
 
 from multihiggs.cli import main
 from multihiggs.config import ScanConfig, load_config
-from multihiggs.contours import PLOT_TITLE_FONTSIZE, build_contour_data, parse_fixed_values
+from multihiggs.contours import (
+    PLOT_TITLE_FONTSIZE,
+    build_contour_data,
+    build_variation_data,
+    parse_fixed_values,
+)
 from multihiggs.distributions import (
     DistributionData,
     DistributionSeries,
@@ -268,6 +273,35 @@ class PipelineTests(unittest.TestCase):
                 expected = (10.0 + 2.0 * ct + 3.0 * 0.25 + 5.0 * c3 + 7.0 * ct * c3) / 10.0
                 self.assertAlmostEqual(contour.ratio[y_index, x_index], expected, places=8)
 
+    def test_variation_data_scans_one_axis_with_fixed_values_and_sm_defaults(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+        points = generate_scan_points(config)
+        values = [point.values for point in points]
+        y = np.asarray(
+            [
+                10.0 + 2.0 * ct + 3.0 * ct2 + 5.0 * c3 + 7.0 * ct * c3
+                for ct, ct2, c3 in values
+            ]
+        )
+        yerr = np.ones(len(values)) * 0.01
+        result = fit_values(config, values, y, yerr, "synthetic")
+
+        variation = build_variation_data(
+            config,
+            result.to_dict(config),
+            x_name="ct",
+            fixed_values={"c3": 0.5},
+            x_range=(-0.5, 0.5),
+            points=3,
+        )
+
+        self.assertEqual(variation.x_name, "ct")
+        self.assertEqual(variation.fixed_values, {"c3": 0.5})
+        np.testing.assert_allclose(variation.x_values, [-0.5, 0.0, 0.5])
+        for index, ct in enumerate(variation.x_values):
+            expected = (10.0 + 2.0 * ct + 5.0 * 0.5 + 7.0 * ct * 0.5) / 10.0
+            self.assertAlmostEqual(variation.ratio[index], expected, places=8)
+
     def test_fixed_values_reject_axis_overrides(self):
         config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
 
@@ -313,6 +347,51 @@ class PipelineTests(unittest.TestCase):
                         "c3",
                         "--fix",
                         "ct2=0.25",
+                        "--output",
+                        str(output),
+                        "--points",
+                        "5",
+                    ]
+                )
+
+            self.assertEqual(status, 0)
+            self.assertTrue(output.exists())
+            self.assertGreater(output.stat().st_size, 0)
+
+    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib is not installed")
+    def test_variation_command_writes_plot_with_fixed_override(self):
+        config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
+        points = generate_scan_points(config)
+        values = [point.values for point in points]
+        y = np.asarray(
+            [
+                10.0 + 2.0 * ct + 3.0 * ct2 + 5.0 * c3 + 7.0 * ct * c3
+                for ct, ct2, c3 in values
+            ]
+        )
+        yerr = np.ones(len(values)) * 0.01
+        result = fit_values(config, values, y, yerr, "synthetic")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            fit_json = tmp_path / "fit.json"
+            fit_json.write_text(
+                json.dumps({"fits": [result.to_dict(config)]}),
+                encoding="utf-8",
+            )
+            output = tmp_path / "ct_variation.png"
+
+            with patch.dict(os.environ, {"MPLCONFIGDIR": str(tmp_path), "XDG_CACHE_HOME": str(tmp_path)}):
+                status = main(
+                    [
+                        "variation",
+                        str(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml"),
+                        "--input",
+                        str(fit_json),
+                        "--x",
+                        "ct",
+                        "--fix",
+                        "c3=0.5",
                         "--output",
                         str(output),
                         "--points",
