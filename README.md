@@ -369,6 +369,7 @@ multihiggs distribution configs/gg_hhh_c3d4.toml \
   --input outputs/gg_hhh/hist_fit.json \
   --observable h_pt \
   --point c3=5,d4=100 \
+  --point c3=-5,d4=-100 \
   --output outputs/gg_hhh/h_pt_distribution.png \
   --pdf-output outputs/gg_hhh/h_pt_distribution.pdf
 ```
@@ -385,10 +386,13 @@ multihiggs distribution configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
   --point ct=-0.25,c3=0.5
 ```
 
-By default the y-axis is the fitted bin cross section, `sigma_bin` in pb, with
-vertical error bars from the fit covariance and horizontal error bars showing
-the bin widths. Use `--density` to plot bin contents divided by bin width, and
-`--log-y` for a logarithmic y-axis.
+The plot is drawn as a step histogram over the configured bin edges, with
+vertical error bars at the bin centers from the fit covariance. Horizontal
+bin-width error bars are not drawn. The SM reference is drawn as a black solid
+line, while repeated parameter points rotate through colors and line styles.
+By default the y-axis is the fitted bin cross section, `sigma_bin` in pb. Use
+`--density` to plot bin contents divided by bin width, and `--log-y` for a
+logarithmic y-axis.
 
 For per-object observables such as `h_pt` with `which = "all"`, the histogram
 integral is multiplicity times the event cross section.

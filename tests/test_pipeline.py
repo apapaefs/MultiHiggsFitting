@@ -17,7 +17,15 @@ import numpy as np
 from multihiggs.cli import main
 from multihiggs.config import ScanConfig, load_config
 from multihiggs.contours import PLOT_TITLE_FONTSIZE, build_contour_data, parse_fixed_values
-from multihiggs.distributions import build_distribution_data, parse_parameter_points
+from multihiggs.distributions import (
+    DistributionData,
+    DistributionSeries,
+    build_distribution_data,
+    draw_distribution_series,
+    distribution_series_style,
+    histogram_step_xy,
+    parse_parameter_points,
+)
 from multihiggs.fit import fit_values, format_polynomial_report
 from multihiggs.grid import generate_scan_points
 from multihiggs.histograms import histogram_lhe
@@ -332,19 +340,109 @@ class PipelineTests(unittest.TestCase):
             config,
             {"fits": fit_records},
             observable_name=observable.name,
-            parameter_points=[{"c3": 1.0, "d4": 2.0}],
+            parameter_points=[{"c3": 1.0, "d4": 2.0}, {"c3": -1.0}],
             include_sm=True,
         )
 
         self.assertEqual(distribution.observable.name, observable.name)
-        self.assertEqual([series.label for series in distribution.series], ["c3=1, d4=2", "SM"])
+        self.assertEqual([series.label for series in distribution.series], ["c3=1, d4=2", "c3=-1", "SM"])
         for bin_index, value in enumerate(distribution.series[0].values):
             expected = float(bin_index + 1) * (10.0 + 2.0 * 1.0 - 0.1 * 2.0)
             self.assertAlmostEqual(value, expected, places=8)
         for bin_index, value in enumerate(distribution.series[1].values):
+            expected = float(bin_index + 1) * (10.0 + 2.0 * -1.0)
+            self.assertAlmostEqual(value, expected, places=8)
+        for bin_index, value in enumerate(distribution.series[2].values):
             expected = float(bin_index + 1) * 10.0
             self.assertAlmostEqual(value, expected, places=8)
         self.assertTrue(np.all(distribution.series[0].errors >= 0.0))
+
+    def test_histogram_step_xy_draws_continuous_outline_without_boxing_each_bin(self):
+        x_values, y_values = histogram_step_xy(
+            np.asarray([0.0, 10.0, 20.0]),
+            np.asarray([10.0, 20.0, 30.0]),
+            np.asarray([1.0, 2.0, 4.0]),
+        )
+
+        expected_x = [0.0, 0.0, 10.0, 10.0, 20.0, 20.0, 30.0, 30.0]
+        expected_y = [0.0, 1.0, 1.0, 2.0, 2.0, 4.0, 4.0, 0.0]
+        np.testing.assert_allclose(
+            x_values,
+            expected_x,
+        )
+        np.testing.assert_allclose(
+            y_values,
+            expected_y,
+        )
+
+    def test_draw_distribution_series_uses_step_line_and_y_only_errorbars(self):
+        class RecordingAxes:
+            def __init__(self):
+                self.plot_calls = []
+                self.errorbar_calls = []
+
+            def plot(self, *args, **kwargs):
+                self.plot_calls.append((args, kwargs))
+
+            def errorbar(self, *args, **kwargs):
+                self.errorbar_calls.append((args, kwargs))
+
+        observable = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml").observables[0]
+        series = DistributionSeries(
+            label="c3=1",
+            values=np.asarray([1.0, 2.0, 3.0]),
+            errors=np.asarray([0.1, 0.2, 0.3]),
+            parameter_values={"c3": 1.0},
+        )
+        data = DistributionData(
+            observable=observable,
+            bin_lows=np.asarray([0.0, 10.0, 20.0]),
+            bin_highs=np.asarray([10.0, 20.0, 30.0]),
+            bin_centers=np.asarray([5.0, 15.0, 25.0]),
+            bin_half_widths=np.asarray([5.0, 5.0, 5.0]),
+            series=[series],
+            density=False,
+        )
+        ax = RecordingAxes()
+
+        draw_distribution_series(ax, data, series, color="C0", marker="o", linestyle="--")
+
+        self.assertEqual(len(ax.plot_calls), 1)
+        self.assertEqual(len(ax.errorbar_calls), 1)
+        step_args, step_kwargs = ax.plot_calls[0]
+        errorbar_args, errorbar_kwargs = ax.errorbar_calls[0]
+        np.testing.assert_allclose(step_args[0], [0.0, 0.0, 10.0, 10.0, 20.0, 20.0, 30.0, 30.0])
+        np.testing.assert_allclose(step_args[1], [0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 0.0])
+        self.assertEqual(step_kwargs["linestyle"], "--")
+        self.assertNotIn("xerr", errorbar_kwargs)
+        np.testing.assert_allclose(errorbar_kwargs["yerr"], series.errors)
+        np.testing.assert_allclose(errorbar_args[0], data.bin_centers)
+        np.testing.assert_allclose(errorbar_args[1], series.values)
+
+    def test_distribution_series_style_keeps_sm_black_and_rotates_parameter_linestyles(self):
+        color_cycle = ["C0", "C1", "C2"]
+        point_one = DistributionSeries(
+            label="c3=1",
+            values=np.asarray([]),
+            errors=np.asarray([]),
+            parameter_values={"c3": 1.0},
+        )
+        point_two = DistributionSeries(
+            label="c3=2",
+            values=np.asarray([]),
+            errors=np.asarray([]),
+            parameter_values={"c3": 2.0},
+        )
+        sm = DistributionSeries(
+            label="SM",
+            values=np.asarray([]),
+            errors=np.asarray([]),
+            parameter_values={"c3": 0.0},
+        )
+
+        self.assertEqual(distribution_series_style(point_one, 0, color_cycle), ("C0", "-"))
+        self.assertEqual(distribution_series_style(point_two, 1, color_cycle), ("C1", "--"))
+        self.assertEqual(distribution_series_style(sm, 2, color_cycle), ("black", "-"))
 
     def test_parameter_points_default_unspecified_couplings_to_sm(self):
         config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
@@ -383,6 +481,8 @@ class PipelineTests(unittest.TestCase):
                         observable.name,
                         "--point",
                         "c3=1,d4=2",
+                        "--point",
+                        "c3=-1",
                         "--output",
                         str(output),
                     ]

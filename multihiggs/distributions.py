@@ -14,6 +14,8 @@ from .contours import format_axis_label, resolve_coupling, safe_filename_piece
 
 
 DISTRIBUTION_TITLE_FONTSIZE = 13
+SM_DISTRIBUTION_COLOR = "black"
+PARAMETER_LINESTYLES = ("-", "--", "-.", ":")
 
 
 @dataclass(frozen=True)
@@ -204,19 +206,22 @@ def write_distribution_plot(
         ) from exc
 
     fig, ax = plt.subplots(figsize=(7.2, 5.2), constrained_layout=True)
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    parameter_style_index = 0
+    baseline = distribution_outline_baseline(data, log_y=log_y)
     for index, series in enumerate(data.series):
-        ax.errorbar(
-            data.bin_centers,
-            series.values,
-            yerr=series.errors,
-            xerr=data.bin_half_widths,
-            fmt=marker_for_index(index) + "-",
-            linewidth=1.6,
-            markersize=4.5,
-            capsize=3.0,
-            elinewidth=1.0,
-            label=series.label,
+        color, linestyle = distribution_series_style(series, parameter_style_index, color_cycle)
+        draw_distribution_series(
+            ax,
+            data,
+            series,
+            color=color,
+            marker=marker_for_index(index),
+            linestyle=linestyle,
+            baseline=baseline,
         )
+        if not is_sm_distribution_series(series):
+            parameter_style_index += 1
 
     if log_y:
         ax.set_yscale("log")
@@ -232,6 +237,83 @@ def write_distribution_plot(
     fig.savefig(output_path, dpi=300)
     plt.close(fig)
     return output_path
+
+
+def histogram_step_xy(
+    bin_lows: np.ndarray,
+    bin_highs: np.ndarray,
+    values: np.ndarray,
+    *,
+    baseline: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    if len(values) == 0:
+        return np.asarray([], dtype=float), np.asarray([], dtype=float)
+    numeric_values = np.asarray(values, dtype=float)
+    edges = np.concatenate(([float(bin_lows[0])], np.asarray(bin_highs, dtype=float)))
+    x_values = np.repeat(edges, 2)
+    y_values = np.concatenate(([float(baseline)], np.repeat(numeric_values, 2), [float(baseline)]))
+    return np.asarray(x_values, dtype=float), np.asarray(y_values, dtype=float)
+
+
+def draw_distribution_series(
+    ax,
+    data: DistributionData,
+    series: DistributionSeries,
+    *,
+    color: str,
+    marker: str,
+    linestyle: str = "-",
+    baseline: float = 0.0,
+) -> None:
+    step_x, step_y = histogram_step_xy(data.bin_lows, data.bin_highs, series.values, baseline=baseline)
+    ax.plot(
+        step_x,
+        step_y,
+        linestyle=linestyle,
+        linewidth=1.8,
+        color=color,
+        label=series.label,
+    )
+    ax.errorbar(
+        data.bin_centers,
+        series.values,
+        yerr=series.errors,
+        fmt=marker,
+        linestyle="none",
+        color=color,
+        markersize=4.2,
+        capsize=3.0,
+        elinewidth=1.0,
+    )
+
+
+def distribution_outline_baseline(data: DistributionData, *, log_y: bool) -> float:
+    if not log_y:
+        return 0.0
+    positive_values = [
+        float(value)
+        for series in data.series
+        for value in series.values
+        if float(value) > 0.0
+    ]
+    if not positive_values:
+        return 1e-30
+    return min(positive_values) * 0.5
+
+
+def distribution_series_style(
+    series: DistributionSeries,
+    parameter_style_index: int,
+    color_cycle: list[str],
+) -> tuple[str, str]:
+    if is_sm_distribution_series(series):
+        return SM_DISTRIBUTION_COLOR, "-"
+    color = color_cycle[parameter_style_index % len(color_cycle)] if color_cycle else f"C{parameter_style_index}"
+    return color, PARAMETER_LINESTYLES[parameter_style_index % len(PARAMETER_LINESTYLES)]
+
+
+def is_sm_distribution_series(series: DistributionSeries) -> bool:
+    return series.label == "SM"
 
 
 def marker_for_index(index: int) -> str:
