@@ -316,8 +316,25 @@ def format_inferred_terms(result: InferredTerms) -> str:
     for power in result.cross_section_terms:
         lines.append(f"  {format_power(power)},")
     lines.append("]")
+    lines.append("Inferred cross-section polynomial powers:")
+    for power in result.cross_section_terms:
+        lines.append(f"  {format_monomial(power, result.coupling_names)}")
     lines.append("WARNING: CHECK inferred fit terms before using them.")
     return "\n".join(lines)
+
+
+def format_monomial(power: Power, coupling_names: tuple[str, ...]) -> str:
+    pieces = []
+    for name, exponent in zip(coupling_names, power):
+        if exponent == 0:
+            continue
+        if exponent == 1:
+            pieces.append(name)
+        else:
+            pieces.append(f"{name}^{exponent}")
+    if not pieces:
+        return "1"
+    return "*".join(pieces)
 
 
 def format_terms_block(terms: Iterable[Power]) -> str:

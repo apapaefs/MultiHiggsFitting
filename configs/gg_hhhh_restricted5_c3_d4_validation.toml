@@ -1,0 +1,84 @@
+[process]
+name = "gg_hhhh_restricted5_c3_d4_validation"
+mg5_path = "MG5_aMC_v3_5_15"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h h h [noborn=QCD]"
+output = "gg_hhhh_restricted5_c3_d4_validation"
+
+[scan]
+run_number = "1"
+energy_tev = 14.0
+nevents = 100
+min_events = 100
+strategy = "chebyshev_lobatto"
+sort = "sm_first"
+skip_existing = true
+no_cuts = true
+extra_set_commands = [
+  "set CT1 0.0",
+  "set CT2 0.0",
+  "set CT3 0.0",
+]
+
+[scan.madgraph]
+accuracy = 0.1
+points = 500
+iterations = 3
+
+# This validation scan uses the restricted5 MHEFT deviations D3 and D4,
+# exposed as c3 and d4 for consistency with the other configs.
+[[couplings]]
+name = "c3"
+parameter = "D3"
+fit_name = "c3"
+range = [-1.0, 1.0]
+points = 3
+fit_offset = 0.0
+sm_value = 0.0
+
+[[couplings]]
+name = "d4"
+parameter = "D4"
+fit_name = "d4"
+range = [-1.0, 1.0]
+points = 3
+fit_offset = 0.0
+sm_value = 0.0
+
+[fit]
+basis = "chebyshev"
+# Coarse validation interpolation basis. Re-run `multihiggs infer-terms` after
+# generating the process if this config is promoted beyond validation use.
+terms = [
+  [0, 0],
+  [0, 1],
+  [1, 0],
+  [0, 2],
+  [1, 1],
+  [2, 0],
+  [1, 2],
+  [2, 1],
+  [2, 2],
+]
+normalize_to_sm = true
+
+[[observables]]
+name = "h_pt"
+kind = "pt"
+pdg_id = 25
+which = "all"
+bins = [0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]
+
+[[observables]]
+name = "hh_mass"
+kind = "invariant_mass"
+pdg_ids = [25, 25]
+which = "all"
+bins = [200.0, 300.0, 400.0, 500.0, 700.0, 1000.0, 1500.0, 2500.0]
+
+[[observables]]
+name = "hhhh_mass"
+kind = "invariant_mass"
+pdg_ids = [25, 25, 25, 25]
+which = "all"
+bins = [500.0, 700.0, 1000.0, 1500.0, 2000.0, 3000.0, 5000.0]

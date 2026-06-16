@@ -15,6 +15,14 @@ There are also light validation configs:
 - `gg -> t t~ h h h` in [configs/gg_tthhh_c3d4_validation.toml](configs/gg_tthhh_c3d4_validation.toml)
 - `gg -> t t~ h h h` with the restricted5 model and `ct`, `ct2`, `c3`
   modifiers in [configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml](configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml)
+- `gg -> h h h [noborn=QCD]` with the restricted5 model and `ct`, `c3`,
+  `d4` modifiers in [configs/gg_hhh_restricted5_ct_c3_d4_validation.toml](configs/gg_hhh_restricted5_ct_c3_d4_validation.toml)
+- `gg -> h h h [noborn=QCD]` with the restricted5 model and `ct`, `ct2`,
+  `ct3`, `c3`, `d4` modifiers in [configs/gg_hhh_restricted5_ct_ct2_ct3_c3_d4_validation.toml](configs/gg_hhh_restricted5_ct_ct2_ct3_c3_d4_validation.toml)
+- `gg -> h h h h [noborn=QCD]` with the restricted5 model and `c3`, `d4`
+  modifiers in [configs/gg_hhhh_restricted5_c3_d4_validation.toml](configs/gg_hhhh_restricted5_c3_d4_validation.toml)
+- `gg -> t t~ h h h` with the restricted5 model and `ct`, `c3`, `d4`
+  modifiers in [configs/gg_tthhh_restricted5_ct_c3_d4_validation.toml](configs/gg_tthhh_restricted5_ct_c3_d4_validation.toml)
 
 ## Setup
 
