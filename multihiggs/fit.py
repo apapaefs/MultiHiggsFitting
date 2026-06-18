@@ -12,6 +12,7 @@ import numpy as np
 from .basis import design_matrix, monomial_basis, monomial_labels, monomial_transform
 from .config import ProjectConfig
 from .results import RunResult, read_results_csv
+from .term_maps import format_power_label, resolve_term_map, transform_coefficients
 
 
 @dataclass(frozen=True)
@@ -295,7 +296,11 @@ def filter_run_results_by_min_events(
     return filtered
 
 
-def format_polynomial_report(config: ProjectConfig, result: FitResult) -> str:
+def format_polynomial_report(
+    config: ProjectConfig,
+    result: FitResult,
+    term_map_name: str | None = None,
+) -> str:
     lines = []
     if result.label != "xsec":
         lines.append(f"Fit label: {result.label}")
@@ -370,6 +375,51 @@ def format_polynomial_report(config: ProjectConfig, result: FitResult) -> str:
             sig=6,
         )
     )
+    if term_map_name is not None:
+        term_map = resolve_term_map(config, term_map_name)
+        mapped_variable_text = ",".join(term_map.names)
+        mapped_powers, mapped_coefficients, mapped_covariance = transform_coefficients(
+            result.monomial_powers,
+            result.monomial_coefficients,
+            result.monomial_covariance,
+            term_map,
+        )
+        mapped_normalized_powers, mapped_normalized_coefficients, mapped_normalized_covariance = transform_coefficients(
+            result.monomial_powers,
+            result.normalized_monomial_coefficients,
+            result.normalized_monomial_covariance,
+            term_map,
+        )
+        lines.append(f"Physical polynomial coefficients in term map {term_map.name} ({mapped_variable_text}):")
+        mapping_text = term_map.mapping_text()
+        if mapping_text:
+            lines.append(f"Mapping: {mapping_text}")
+        lines.extend(
+            coefficient_lines_for_labels(
+                [
+                    format_power_label(power, term_map.names)
+                    for power in mapped_powers
+                ],
+                mapped_coefficients,
+                mapped_covariance,
+                sig=6,
+            )
+        )
+
+        lines.append(
+            f"Physical {mapped_variable_text} function normalized to sigma({sm_conditions}):"
+        )
+        lines.extend(
+            coefficient_lines_for_labels(
+                [
+                    format_power_label(power, term_map.names)
+                    for power in mapped_normalized_powers
+                ],
+                mapped_normalized_coefficients,
+                mapped_normalized_covariance,
+                sig=6,
+            )
+        )
     return "\n".join(lines)
 
 
@@ -382,6 +432,15 @@ def coefficient_lines(
     sig: int,
 ) -> list[str]:
     labels = monomial_labels(config, powers, variable=variable)
+    return coefficient_lines_for_labels(labels, coefficients, covariance, sig)
+
+
+def coefficient_lines_for_labels(
+    labels: list[str],
+    coefficients: np.ndarray,
+    covariance: np.ndarray,
+    sig: int,
+) -> list[str]:
     errors = np.sqrt(np.abs(np.diag(covariance)))
     return [
         f"{label} {round_sig(coeff, sig)} +- {round_sig(err, 3)}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import csv
 import gzip
 import importlib.util
 import io
@@ -97,6 +98,37 @@ GC_D4 = Coupling(name = 'GC_D4',
     )
 
 
+def write_mheft_process_fixture(process_dir: Path) -> None:
+    model_dir = process_dir / "bin" / "internal" / "ufomodel"
+    matrix_dir = process_dir / "SubProcesses" / "P1_fixture"
+    model_dir.mkdir(parents=True)
+    matrix_dir.mkdir(parents=True)
+    (model_dir / "couplings.py").write_text(
+        """
+GC_SM = Coupling(name = 'GC_SM',
+                 value = 'yt',
+                 order = {'QED':1})
+GC_CT1 = Coupling(name = 'GC_CT1',
+                  value = 'CT1',
+                  order = {'MHEFT':1})
+GC_D3 = Coupling(name = 'GC_D3',
+                 value = 'D3',
+                 order = {'MHEFT':1})
+""",
+        encoding="utf-8",
+    )
+    (matrix_dir / "matrix1_orig.f").write_text(
+        """
+      SUBROUTINE MATRIX1()
+      CALL SSS1_0(W(1,1),W(1,2),GC_SM,AMP(1))
+      CALL SSS1_0(W(1,1),W(1,2),GC_CT1,AMP(2))
+      CALL SSS1_0(W(1,1),W(1,2),GC_D3,AMP(3))
+      END
+""",
+        encoding="utf-8",
+    )
+
+
 class PipelineTests(unittest.TestCase):
     def test_hhh_grid_matches_expected_size_and_sm_first(self):
         config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
@@ -164,6 +196,49 @@ class PipelineTests(unittest.TestCase):
                 (0, 2),
             ),
         )
+
+    def test_config_can_define_custom_term_map(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                """
+[process]
+name = "fixture"
+mg5_path = "MG5"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h"
+output = "proc"
+
+[[couplings]]
+name = "ct"
+parameter = "CT1"
+fit_name = "ct"
+range = [-1.0, 1.0]
+points = 3
+
+[fit]
+basis = "chebyshev"
+terms = [[0]]
+
+[term_maps.custom_top]
+description = "Custom top modifier"
+
+[[term_maps.custom_top.variables]]
+source = "CT1"
+name = "YT"
+offset = 1.0
+""",
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+
+            self.assertIn("custom_top", config.term_maps)
+            term_map = config.term_maps["custom_top"]
+            self.assertEqual(term_map.description, "Custom top modifier")
+            self.assertEqual(term_map.variables[0].source, "CT1")
+            self.assertEqual(term_map.variables[0].name, "YT")
+            self.assertEqual(term_map.variables[0].offset, 1.0)
 
     def test_restricted5_tthhh_validation_maps_readable_modifier_names(self):
         config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
@@ -646,6 +721,95 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("Physical monomial coefficients in k3,k4:", report)
         self.assertIn("Physical polynomial coefficients in c3,d4:", report)
 
+    def test_fit_polynomial_report_can_print_mheft_kappa_term_map(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            config_path = tmp_root / "config.toml"
+            config_path.write_text(
+                """
+[process]
+name = "fixture"
+mg5_path = "MG5"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h"
+output = "proc"
+
+[[couplings]]
+name = "ct"
+parameter = "CT1"
+fit_name = "ct"
+range = [-1.0, 1.0]
+points = 3
+
+[[couplings]]
+name = "c3"
+parameter = "D3"
+fit_name = "c3"
+range = [-1.0, 1.0]
+points = 3
+
+[fit]
+basis = "chebyshev"
+terms = [
+  [0, 0],
+  [1, 0],
+  [0, 1],
+  [1, 1],
+]
+""",
+                encoding="utf-8",
+            )
+            config = load_config(config_path)
+            xsecs = tmp_root / "xsecs.csv"
+            with xsecs.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(
+                    stream,
+                    fieldnames=[
+                        "run_name",
+                        "run_number",
+                        "ct",
+                        "c3",
+                        "xsec_pb",
+                        "xerr_pb",
+                        "event_count",
+                        "event_file",
+                    ],
+                )
+                writer.writeheader()
+                for index, point in enumerate(generate_scan_points(config)):
+                    ct, c3 = point.values
+                    writer.writerow(
+                        {
+                            "run_name": f"run_{index}",
+                            "run_number": "1",
+                            "ct": ct,
+                            "c3": c3,
+                            "xsec_pb": (1.0 + ct) * (1.0 + c3),
+                            "xerr_pb": 0.01,
+                            "event_count": 100,
+                            "event_file": tmp_root / f"run_{index}.lhe.gz",
+                        }
+                    )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = main([
+                    "fit",
+                    str(config_path),
+                    "-i",
+                    str(xsecs),
+                    "-o",
+                    str(tmp_root / "fit.json"),
+                    "--print-polynomial",
+                    "--term-map",
+                    "mheft_kappa",
+                ])
+
+            self.assertEqual(status, 0)
+            output = stdout.getvalue()
+            self.assertIn("Physical polynomial coefficients in term map mheft_kappa (KT,K3):", output)
+            self.assertRegex(output, r"KT\*K3\s+1(?:\.0)?\b")
+
     def test_madevent_launch_block_disables_common_cuts(self):
         config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
         point = generate_scan_points(config)[0]
@@ -940,6 +1104,60 @@ terms = [[0, 0]]
             self.assertNotIn("Updated [fit].terms", output)
             unchanged = load_config(config_path)
             self.assertEqual(unchanged.fit.terms, ((0, 0),))
+
+    def test_infer_terms_command_can_print_mheft_kappa_term_map(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5"
+            process_dir = mg5_path / "proc"
+            write_mheft_process_fixture(process_dir)
+            config_path = tmp_root / "config.toml"
+            config_path.write_text(
+                f"""
+[process]
+name = "fixture"
+mg5_path = "{mg5_path}"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h"
+output = "proc"
+
+[[couplings]]
+name = "ct"
+parameter = "CT1"
+fit_name = "ct"
+range = [-1.0, 1.0]
+points = 3
+
+[[couplings]]
+name = "c3"
+parameter = "D3"
+fit_name = "c3"
+range = [-1.0, 1.0]
+points = 3
+
+[fit]
+basis = "chebyshev"
+terms = [[0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = main([
+                    "infer-terms",
+                    str(config_path),
+                    "--no-update-config",
+                    "--term-map",
+                    "mheft_kappa",
+                ])
+
+            self.assertEqual(status, 0)
+            output = stdout.getvalue()
+            self.assertIn("Inferred cross-section polynomial powers in term map mheft_kappa (KT,K3):", output)
+            self.assertIn("Mapping: KT=1+CT1, K3=1+D3", output)
+            self.assertIn("  KT*K3", output)
+            self.assertNotIn("Updated [fit].terms", output)
 
     def test_scan_reschedules_existing_runs_below_configured_event_minimum(self):
         with tempfile.TemporaryDirectory() as tmpdir:

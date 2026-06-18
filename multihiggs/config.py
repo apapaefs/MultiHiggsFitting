@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .term_maps import TermMap, parse_term_maps
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 path
@@ -233,6 +235,7 @@ class ProjectConfig:
     fit: FitConfig
     extra_points: tuple[dict[str, float], ...] = ()
     observables: tuple[ObservableConfig, ...] = ()
+    term_maps: dict[str, TermMap] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], path: Path) -> "ProjectConfig":
@@ -266,6 +269,7 @@ class ProjectConfig:
             fit=FitConfig.from_dict(data.get("fit", {}), len(couplings)),
             extra_points=extra_points,
             observables=observables,
+            term_maps=parse_term_maps(data.get("term_maps")),
         )
 
     @property

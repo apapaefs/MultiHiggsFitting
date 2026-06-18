@@ -224,6 +224,16 @@ To inspect without modifying the config, use:
 multihiggs infer-terms configs/gg_tthh_c3_validation.toml --no-update-config
 ```
 
+To also print the inferred polynomial support in a shifted variable map, use:
+
+```bash
+multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --no-update-config --term-map mheft_kappa
+```
+
+The built-in `mheft_kappa` map rewrites MHEFT deviations as
+`KT = 1 + CT1`, `K3 = 1 + D3`, and `K4 = 1 + D4`.
+
 Treat the output as a generated cross-check, not a proof: cancellations or
 model subtleties can still remove or add practical fit requirements. The
 command prints explicit warnings to check the inferred terms, and warns if the
@@ -263,6 +273,13 @@ multihiggs fit configs/gg_hhh_c3d4.toml --print-polynomial
 That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
 to the constant term, monomial coefficients in fitted variables such as
 `k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
+For MHEFT-style shifted variables, request an additional mapped coefficient
+block:
+
+```bash
+multihiggs fit configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --print-polynomial --term-map mheft_kappa
+```
 
 The fitted result can also be plotted as a normalized two-variable contour;
 see [Contour Plots](#contour-plots).
@@ -325,6 +342,36 @@ fit_offset = 1.0
 
 This means the grid is built in `k3 = c3 + 1`, while MadGraph receives `c3`.
 For a parameter scanned directly, set `fit_offset = 0.0`.
+
+Term maps are optional output transformations for polynomial reporting. They do
+not change the scan grid, MadGraph parameter values, or `[fit].terms`. The
+built-in `mheft_kappa` map is available without adding anything to a config:
+
+```text
+K3 = 1 + D3
+K4 = 1 + D4
+KT = 1 + CT1
+```
+
+Use `--term-map mheft_kappa` with `infer-terms` to print inferred powers in
+`K3`, `K4`, and `KT`, or with `fit --print-polynomial` to print an additional
+coefficient block in those variables.
+
+Custom maps can be defined as top-level TOML blocks:
+
+```toml
+[term_maps.custom_top]
+description = "Custom top modifier"
+
+[[term_maps.custom_top.variables]]
+source = "CT1"
+name = "YT"
+offset = 1.0
+```
+
+The `source` value is matched against the MadGraph/UFO parameter name first,
+with config names and fit names also accepted for fitted polynomial output.
+For the example above, `YT = 1 + CT1`.
 
 ## Distribution Fits
 

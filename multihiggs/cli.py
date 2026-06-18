@@ -28,6 +28,7 @@ from .histograms import write_histogram_csv
 from .madgraph import run_madevent_points, run_mg5, write_madevent_card, write_process_card
 from .results import discover_completed_runs, write_results_csv
 from .term_inference import format_inferred_terms, infer_terms_from_process_dir, update_config_fit_terms
+from .term_maps import resolve_term_map
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,6 +89,10 @@ def main(argv: list[str] | None = None) -> int:
         "--print-polynomial",
         action="store_true",
         help="Print old-style polynomial coefficient blocks after fitting",
+    )
+    fit_parser.add_argument(
+        "--term-map",
+        help="Print an additional polynomial block in the named term map when using --print-polynomial",
     )
 
     contour_parser = add_config_command(subparsers, "contour", "Plot a two-variable normalized fit contour")
@@ -185,6 +190,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Only print inferred terms; do not rewrite [fit].terms in the config",
     )
+    infer_parser.add_argument(
+        "--term-map",
+        help="Also print inferred polynomial powers in the named term map",
+    )
 
     args = parser.parse_args(argv)
     config = load_config(args.config)
@@ -208,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "hist":
         return command_hist(config, args.output, args.observables, args.run_numbers, args.min_events)
     if args.command == "fit":
-        return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events)
+        return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events, args.term_map)
     if args.command == "contour":
         return command_contour(
             config,
@@ -252,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
             args.log_y,
         )
     if args.command == "infer-terms":
-        return command_infer_terms(config, args.process_dir, not args.no_update_config)
+        return command_infer_terms(config, args.process_dir, not args.no_update_config, args.term_map)
     raise AssertionError(args.command)
 
 
@@ -371,6 +380,7 @@ def command_fit(
     output: Path | None,
     print_polynomial: bool,
     min_events: int | None,
+    term_map_name: str | None,
 ) -> int:
     input_path = input_path or default_path(config, "xsecs.csv")
     output = output or default_path(config, "fit.json")
@@ -386,7 +396,7 @@ def command_fit(
     if print_polynomial:
         for result in results:
             print()
-            print(format_polynomial_report(config, result))
+            print(format_polynomial_report(config, result, term_map_name=term_map_name))
     return 0
 
 
@@ -514,13 +524,23 @@ def command_distribution(
     return 0
 
 
-def command_infer_terms(config, process_dir: Path | None, update_config: bool) -> int:
+def command_infer_terms(
+    config,
+    process_dir: Path | None,
+    update_config: bool,
+    term_map_name: str | None,
+) -> int:
     process_dir = process_dir or config.process_dir
     result = infer_terms_from_process_dir(
         process_dir,
         tuple(coupling.parameter for coupling in config.couplings),
     )
-    print(format_inferred_terms(result))
+    term_map = (
+        None
+        if term_map_name is None
+        else resolve_term_map(config, term_map_name, source_names=result.coupling_names)
+    )
+    print(format_inferred_terms(result, term_map=term_map))
     if update_config:
         update_config_fit_terms(config.path, result.cross_section_terms)
         print()

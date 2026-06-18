@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from .term_maps import ResolvedTermMap, format_power_label, transformed_support
+
 
 Power = tuple[int, ...]
 Support = set[Power]
@@ -288,7 +290,7 @@ def sort_powers(powers: Iterable[Power]) -> tuple[Power, ...]:
     return tuple(sorted(powers, key=lambda power: (sum(power), tuple(-item for item in power))))
 
 
-def format_inferred_terms(result: InferredTerms) -> str:
+def format_inferred_terms(result: InferredTerms, term_map: ResolvedTermMap | None = None) -> str:
     coupling_text = ",".join(result.coupling_names)
     lines = [
         f"Process directory: {result.process_dir}",
@@ -319,6 +321,14 @@ def format_inferred_terms(result: InferredTerms) -> str:
     lines.append("Inferred cross-section polynomial powers:")
     for power in result.cross_section_terms:
         lines.append(f"  {format_monomial(power, result.coupling_names)}")
+    if term_map is not None:
+        variable_text = ",".join(term_map.names)
+        lines.append(f"Inferred cross-section polynomial powers in term map {term_map.name} ({variable_text}):")
+        mapping_text = term_map.mapping_text()
+        if mapping_text:
+            lines.append(f"Mapping: {mapping_text}")
+        for power in transformed_support(result.cross_section_terms, term_map):
+            lines.append(f"  {format_power_label(power, term_map.names)}")
     lines.append("WARNING: CHECK inferred fit terms before using them.")
     return "\n".join(lines)
 
