@@ -9,10 +9,24 @@ from typing import Iterable
 
 import numpy as np
 
-from .basis import design_matrix, monomial_basis, monomial_labels, monomial_transform
+from .basis import (
+    design_matrix,
+    monomial_basis,
+    monomial_labels,
+    monomial_transform,
+    physical_variable_names,
+    physical_variable_values,
+    resolved_fit_term_map,
+)
 from .config import ProjectConfig
 from .results import RunResult, read_results_csv
-from .term_maps import format_power_label, resolve_term_map, transform_coefficients
+from .term_maps import (
+    format_factored_power_label,
+    format_power_label,
+    resolve_term_map,
+    transform_coefficients,
+    transform_mapped_coefficients_to_sources,
+)
 
 
 @dataclass(frozen=True)
@@ -36,7 +50,8 @@ class FitResult:
     normalized_monomial_covariance: np.ndarray
 
     def to_dict(self, config: ProjectConfig) -> dict[str, object]:
-        fit_mono_labels = monomial_labels(config, self.fit_monomial_powers, variable="fit")
+        fit_label_variable = "physical" if config.fit.basis == "physical_monomial" else "fit"
+        fit_mono_labels = monomial_labels(config, self.fit_monomial_powers, variable=fit_label_variable)
         mono_labels = monomial_labels(config, self.monomial_powers, variable="scan")
         return {
             "label": self.label,
@@ -105,8 +120,6 @@ def fit_values(
     yerr: np.ndarray | None,
     label: str,
 ) -> FitResult:
-    if config.fit.basis != "chebyshev":
-        raise ValueError(f"Unsupported fit basis: {config.fit.basis}")
     design = design_matrix(values, config)
     if yerr is None:
         errors = np.maximum(np.abs(y) * 0.01, 1e-30)
@@ -122,31 +135,64 @@ def fit_values(
     covariance = max(chi2_dof, 1.0) * np.linalg.pinv(np.dot(fit_design.T, fit_design))
     condition = float(np.linalg.cond(design))
 
-    fit_powers, fit_transform = monomial_transform(config, variable="fit")
-    fit_monomial_coefficients = np.dot(fit_transform, coefficients)
-    fit_monomial_covariance = np.dot(fit_transform, np.dot(covariance, fit_transform.T))
-    sm_fit_values = tuple(coupling.fit_from_scan(coupling.sm_value) for coupling in config.couplings)
-    sm_fit_basis = monomial_basis(sm_fit_values, fit_powers)
-    sigma_sm_fit = float(np.dot(sm_fit_basis, fit_monomial_coefficients))
-    normalized_fit_coeffs, normalized_fit_cov = normalize_coefficients(
-        fit_monomial_coefficients,
-        fit_monomial_covariance,
-        sm_fit_basis,
-        sigma_sm_fit,
-    )
+    if config.fit.basis == "chebyshev":
+        fit_powers, fit_transform = monomial_transform(config, variable="fit")
+        fit_monomial_coefficients = np.dot(fit_transform, coefficients)
+        fit_monomial_covariance = np.dot(fit_transform, np.dot(covariance, fit_transform.T))
+        sm_fit_values = tuple(coupling.fit_from_scan(coupling.sm_value) for coupling in config.couplings)
+        sm_fit_basis = monomial_basis(sm_fit_values, fit_powers)
+        sigma_sm_fit = float(np.dot(sm_fit_basis, fit_monomial_coefficients))
+        normalized_fit_coeffs, normalized_fit_cov = normalize_coefficients(
+            fit_monomial_coefficients,
+            fit_monomial_covariance,
+            sm_fit_basis,
+            sigma_sm_fit,
+        )
 
-    powers, transform = monomial_transform(config, variable="scan")
-    monomial_coefficients = np.dot(transform, coefficients)
-    monomial_covariance = np.dot(transform, np.dot(covariance, transform.T))
-    sm_values = tuple(coupling.sm_value for coupling in config.couplings)
-    sm_basis = monomial_basis(sm_values, powers)
-    sigma_sm = float(np.dot(sm_basis, monomial_coefficients))
-    normalized_coeffs, normalized_cov = normalize_coefficients(
-        monomial_coefficients,
-        monomial_covariance,
-        sm_basis,
-        sigma_sm,
-    )
+        powers, transform = monomial_transform(config, variable="scan")
+        monomial_coefficients = np.dot(transform, coefficients)
+        monomial_covariance = np.dot(transform, np.dot(covariance, transform.T))
+        sm_values = tuple(coupling.sm_value for coupling in config.couplings)
+        sm_basis = monomial_basis(sm_values, powers)
+        sigma_sm = float(np.dot(sm_basis, monomial_coefficients))
+        normalized_coeffs, normalized_cov = normalize_coefficients(
+            monomial_coefficients,
+            monomial_covariance,
+            sm_basis,
+            sigma_sm,
+        )
+    elif config.fit.basis == "physical_monomial":
+        fit_powers = list(config.fit.terms)
+        fit_monomial_coefficients = coefficients
+        fit_monomial_covariance = covariance
+        sm_values = tuple(coupling.sm_value for coupling in config.couplings)
+        sm_fit_values = physical_variable_values(sm_values, config)
+        sm_fit_basis = monomial_basis(sm_fit_values, fit_powers)
+        sigma_sm_fit = float(np.dot(sm_fit_basis, fit_monomial_coefficients))
+        normalized_fit_coeffs, normalized_fit_cov = normalize_coefficients(
+            fit_monomial_coefficients,
+            fit_monomial_covariance,
+            sm_fit_basis,
+            sigma_sm_fit,
+        )
+
+        term_map = resolved_fit_term_map(config)
+        powers, monomial_coefficients, monomial_covariance = transform_mapped_coefficients_to_sources(
+            fit_powers,
+            coefficients,
+            covariance,
+            term_map,
+        )
+        sm_basis = monomial_basis(sm_values, powers)
+        sigma_sm = float(np.dot(sm_basis, monomial_coefficients))
+        normalized_coeffs, normalized_cov = normalize_coefficients(
+            monomial_coefficients,
+            monomial_covariance,
+            sm_basis,
+            sigma_sm,
+        )
+    else:
+        raise ValueError(f"Unsupported fit basis: {config.fit.basis}")
     return FitResult(
         label=label,
         coefficients=coefficients,
@@ -300,31 +346,49 @@ def format_polynomial_report(
     config: ProjectConfig,
     result: FitResult,
     term_map_name: str | None = None,
+    expand_term_map: bool = False,
 ) -> str:
     lines = []
     if result.label != "xsec":
         lines.append(f"Fit label: {result.label}")
-    lines.append("Absolute Chebyshev coefficients:")
-    for label, coeff, err in zip(
-        chebyshev_labels(config),
-        result.coefficients,
-        np.sqrt(np.abs(np.diag(result.covariance))),
-    ):
-        lines.append(f"{label} {round_sig(coeff, 6)} +- {round_sig(err, 3)}")
+    if config.fit.basis == "chebyshev":
+        lines.append("Absolute Chebyshev coefficients:")
+        for label, coeff, err in zip(
+            chebyshev_labels(config),
+            result.coefficients,
+            np.sqrt(np.abs(np.diag(result.covariance))),
+        ):
+            lines.append(f"{label} {round_sig(coeff, 6)} +- {round_sig(err, 3)}")
 
-    lines.append("Chebyshev coefficients normalized to the constant term:")
-    constant = result.coefficients[0]
-    for label, coeff, err in zip(
-        chebyshev_labels(config),
-        result.coefficients,
-        np.sqrt(np.abs(np.diag(result.covariance))),
-    ):
-        if abs(constant) < 1e-30:
-            lines.append(f"{label} nan +- nan")
-        else:
-            lines.append(f"{label} {round_sig(coeff / constant, 3)} +- {round_sig(err / abs(constant), 3)}")
-
-    fit_variable_text = ",".join(coupling.fit_name for coupling in config.couplings)
+        lines.append("Chebyshev coefficients normalized to the constant term:")
+        constant = result.coefficients[0]
+        for label, coeff, err in zip(
+            chebyshev_labels(config),
+            result.coefficients,
+            np.sqrt(np.abs(np.diag(result.covariance))),
+        ):
+            if abs(constant) < 1e-30:
+                lines.append(f"{label} nan +- nan")
+            else:
+                lines.append(f"{label} {round_sig(coeff / constant, 3)} +- {round_sig(err / abs(constant), 3)}")
+        fit_variable_text = ",".join(coupling.fit_name for coupling in config.couplings)
+        fit_label_variable = "fit"
+    elif config.fit.basis == "physical_monomial":
+        lines.append("Absolute physical-basis coefficients:")
+        lines.extend(
+            coefficient_lines(
+                config,
+                result.fit_monomial_powers,
+                result.fit_monomial_coefficients,
+                result.fit_monomial_covariance,
+                variable="physical",
+                sig=6,
+            )
+        )
+        fit_variable_text = ",".join(physical_variable_names(config))
+        fit_label_variable = "physical"
+    else:
+        raise ValueError(f"Unsupported fit basis: {config.fit.basis}")
     lines.append(f"Physical monomial coefficients in {fit_variable_text}:")
     lines.extend(
         coefficient_lines(
@@ -332,7 +396,7 @@ def format_polynomial_report(
             result.fit_monomial_powers,
             result.fit_monomial_coefficients,
             result.fit_monomial_covariance,
-            variable="fit",
+            variable=fit_label_variable,
             sig=6,
         )
     )
@@ -346,7 +410,7 @@ def format_polynomial_report(
             result.fit_monomial_powers,
             result.normalized_fit_monomial_coefficients,
             result.normalized_fit_monomial_covariance,
-            variable="fit",
+            variable=fit_label_variable,
             sig=6,
         )
     )
@@ -378,48 +442,76 @@ def format_polynomial_report(
     if term_map_name is not None:
         term_map = resolve_term_map(config, term_map_name)
         mapped_variable_text = ",".join(term_map.names)
-        mapped_powers, mapped_coefficients, mapped_covariance = transform_coefficients(
-            result.monomial_powers,
-            result.monomial_coefficients,
-            result.monomial_covariance,
-            term_map,
-        )
-        mapped_normalized_powers, mapped_normalized_coefficients, mapped_normalized_covariance = transform_coefficients(
-            result.monomial_powers,
-            result.normalized_monomial_coefficients,
-            result.normalized_monomial_covariance,
-            term_map,
-        )
-        lines.append(f"Physical polynomial coefficients in term map {term_map.name} ({mapped_variable_text}):")
+        lines.append(f"Physical polynomial coefficients in minimal term map {term_map.name} ({mapped_variable_text}):")
         mapping_text = term_map.mapping_text()
         if mapping_text:
             lines.append(f"Mapping: {mapping_text}")
         lines.extend(
             coefficient_lines_for_labels(
                 [
-                    format_power_label(power, term_map.names)
-                    for power in mapped_powers
+                    format_factored_power_label(power, term_map)
+                    for power in result.monomial_powers
                 ],
-                mapped_coefficients,
-                mapped_covariance,
+                result.monomial_coefficients,
+                result.monomial_covariance,
                 sig=6,
             )
         )
 
         lines.append(
-            f"Physical {mapped_variable_text} function normalized to sigma({sm_conditions}):"
+            f"Physical minimal {mapped_variable_text} function normalized to sigma({sm_conditions}):"
         )
         lines.extend(
             coefficient_lines_for_labels(
                 [
-                    format_power_label(power, term_map.names)
-                    for power in mapped_normalized_powers
+                    format_factored_power_label(power, term_map)
+                    for power in result.monomial_powers
                 ],
-                mapped_normalized_coefficients,
-                mapped_normalized_covariance,
+                result.normalized_monomial_coefficients,
+                result.normalized_monomial_covariance,
                 sig=6,
             )
         )
+        if expand_term_map:
+            mapped_powers, mapped_coefficients, mapped_covariance = transform_coefficients(
+                result.monomial_powers,
+                result.monomial_coefficients,
+                result.monomial_covariance,
+                term_map,
+            )
+            mapped_normalized_powers, mapped_normalized_coefficients, mapped_normalized_covariance = transform_coefficients(
+                result.monomial_powers,
+                result.normalized_monomial_coefficients,
+                result.normalized_monomial_covariance,
+                term_map,
+            )
+            lines.append(f"Expanded physical polynomial coefficients in term map {term_map.name} ({mapped_variable_text}):")
+            lines.extend(
+                coefficient_lines_for_labels(
+                    [
+                        format_power_label(power, term_map.names)
+                        for power in mapped_powers
+                    ],
+                    mapped_coefficients,
+                    mapped_covariance,
+                    sig=6,
+                )
+            )
+
+            lines.append(
+                f"Expanded physical {mapped_variable_text} function normalized to sigma({sm_conditions}):"
+            )
+            lines.extend(
+                coefficient_lines_for_labels(
+                    [
+                        format_power_label(power, term_map.names)
+                        for power in mapped_normalized_powers
+                    ],
+                    mapped_normalized_coefficients,
+                    mapped_normalized_covariance,
+                    sig=6,
+                )
+            )
     return "\n".join(lines)
 
 

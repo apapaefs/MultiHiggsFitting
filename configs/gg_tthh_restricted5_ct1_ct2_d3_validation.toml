@@ -1,9 +1,9 @@
 [process]
-name = "gg_tthhh_restricted5_ct_ct2_c3_validation"
+name = "gg_tthh_restricted5_ct1_ct2_d3_validation"
 mg5_path = "MG5_aMC_v3_5_15"
 model = "heft_loop_sm_restricted5"
-generate = "g g > t t~ h h h"
-output = "gg_tthhh_restricted5_ct_ct2_c3_validation"
+generate = "g g > t t~ h h MHEFT^2<=4"
+output = "gg_tthh_restricted5_ct1_ct2_d3_validation"
 
 [scan]
 run_number = "1"
@@ -20,67 +20,55 @@ extra_set_commands = [
 ]
 
 [scan.madgraph]
-accuracy = 0.01
+accuracy = 0.05
 points = 1000
-iterations = 5
+iterations = 3
 
-# The restricted5 UFO uses uppercase parameter names. These config names keep
-# the scan readable while setting CT1, CT2, and D3 in MadGraph.
+# Three-coupling restricted5 ttHH validation scan in the native MHEFT notation.
+# The fit-term order is CT1, CT2, D3, mapped below to KT, CT2, K3.
 # Avoid CT1 = -1 in this validation grid: it cancels the SM top Yukawa
 # contribution when CT2 = D3 = 0 and MadEvent can fail in that zero-amplitude
 # corner during multichannel integration.
 [[couplings]]
-name = "ct"
+name = "CT1"
 parameter = "CT1"
-fit_name = "ct"
+fit_name = "CT1"
 range = [-0.5, 0.5]
-points = 7
+points = 5
 fit_offset = 0.0
 sm_value = 0.0
 
 [[couplings]]
-name = "ct2"
+name = "CT2"
 parameter = "CT2"
-fit_name = "ct2"
+fit_name = "CT2"
 range = [-1.0, 1.0]
 points = 3
 fit_offset = 0.0
 sm_value = 0.0
 
 [[couplings]]
-name = "c3"
+name = "D3"
 parameter = "D3"
-fit_name = "c3"
+fit_name = "D3"
 range = [-1.0, 1.0]
-points = 5
+points = 3
 fit_offset = 0.0
 sm_value = 0.0
 
 [fit]
 term_map = "mheft_kappa"
 basis = "physical_monomial"
-# The inferred basis below comes from the generated process HELAS code.
-# Re-run `multihiggs infer-terms` after regenerating or changing the process.
+# Compact ttHH physical basis from amplitude structures KT^2, CT2, and KT*K3.
 terms = [
-  [2, 0, 0],
+  [0, 2, 0],
   [2, 1, 0],
   [1, 1, 1],
   [4, 0, 0],
   [3, 0, 1],
-  [2, 2, 0],
   [2, 0, 2],
-  [1, 2, 1],
-  [0, 2, 2],
-  [4, 1, 0],
-  [3, 1, 1],
-  [2, 1, 2],
-  [1, 1, 3],
-  [6, 0, 0],
-  [5, 0, 1],
-  [4, 0, 2],
-  [3, 0, 3],
-  [2, 0, 4],
 ]
+# Number of basis terms: 6
 normalize_to_sm = true
 
 [[observables]]
@@ -96,13 +84,6 @@ kind = "invariant_mass"
 pdg_ids = [25, 25]
 which = "all"
 bins = [200.0, 300.0, 400.0, 500.0, 700.0, 1000.0, 1500.0, 2500.0]
-
-[[observables]]
-name = "hhh_mass"
-kind = "invariant_mass"
-pdg_ids = [25, 25, 25]
-which = "all"
-bins = [350.0, 450.0, 600.0, 800.0, 1000.0, 1500.0, 2500.0, 4000.0]
 
 [[observables]]
 name = "top_pt"

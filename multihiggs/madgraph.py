@@ -10,6 +10,7 @@ from typing import Iterable
 
 from .config import ProjectConfig
 from .grid import ScanPoint
+from .mheft import generate_with_restricted_mheft_cap
 from .results import event_count
 
 
@@ -56,7 +57,7 @@ def write_process_card(config: ProjectConfig, path: Path, force_output: bool = F
     lines.extend(config.pre_model_commands)
     lines.append(f"import model {config.model}")
     lines.extend(config.post_model_commands)
-    lines.append(f"generate {config.generate}")
+    lines.append(f"generate {generate_with_restricted_mheft_cap(config)}")
     lines.append(f"output {output}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path

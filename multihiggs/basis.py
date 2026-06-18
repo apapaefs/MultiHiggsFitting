@@ -5,6 +5,7 @@ from math import prod
 import numpy as np
 
 from .config import CouplingConfig, ProjectConfig
+from .term_maps import ResolvedTermMap, resolve_term_map
 
 
 def scale_to_chebyshev(value: float, value_range: tuple[float, float]) -> float:
@@ -43,7 +44,41 @@ def chebyshev_row(values: tuple[float, ...], config: ProjectConfig) -> np.ndarra
 
 
 def design_matrix(values: list[tuple[float, ...]], config: ProjectConfig) -> np.ndarray:
-    return np.asarray([chebyshev_row(point, config) for point in values], dtype=float)
+    if config.fit.basis == "chebyshev":
+        return np.asarray([chebyshev_row(point, config) for point in values], dtype=float)
+    if config.fit.basis == "physical_monomial":
+        return np.asarray([physical_monomial_row(point, config) for point in values], dtype=float)
+    raise ValueError(f"Unsupported fit basis: {config.fit.basis}")
+
+
+def physical_monomial_row(values: tuple[float, ...], config: ProjectConfig) -> np.ndarray:
+    variables = physical_variable_values(values, config)
+    return monomial_basis(variables, list(config.fit.terms))
+
+
+def physical_variable_values(values: tuple[float, ...], config: ProjectConfig) -> tuple[float, ...]:
+    term_map = resolved_fit_term_map(config)
+    physical_values = []
+    for value, variable in zip(values, term_map.active_variables):
+        if variable is None:
+            physical_values.append(float(value))
+        else:
+            physical_values.append(float(value) + variable.offset)
+    return tuple(physical_values)
+
+
+def physical_variable_names(config: ProjectConfig) -> tuple[str, ...]:
+    return resolved_fit_term_map(config).names
+
+
+def resolved_fit_term_map(config: ProjectConfig) -> ResolvedTermMap:
+    if config.fit.term_map is None:
+        raise ValueError("[fit] basis physical_monomial requires term_map")
+    return resolve_term_map(
+        config,
+        config.fit.term_map,
+        source_names=tuple(coupling.parameter for coupling in config.couplings),
+    )
 
 
 def univariate_chebyshev_polynomial(
@@ -122,11 +157,27 @@ def monomial_labels(
     powers: list[tuple[int, ...]],
     variable: str = "scan",
 ) -> list[str]:
+    if variable == "physical":
+        names = physical_variable_names(config)
+        return labels_for_powers(powers, names)
     labels = []
     for term in powers:
         pieces = []
         for coupling, power in zip(config.couplings, term):
             name = coupling.fit_name if variable == "fit" else coupling.name
+            if power == 1:
+                pieces.append(name)
+            elif power > 1:
+                pieces.append(f"{name}^{power}")
+        labels.append("*".join(pieces) if pieces else "1")
+    return labels
+
+
+def labels_for_powers(powers: list[tuple[int, ...]], names: tuple[str, ...]) -> list[str]:
+    labels = []
+    for term in powers:
+        pieces = []
+        for name, power in zip(names, term):
             if power == 1:
                 pieces.append(name)
             elif power > 1:

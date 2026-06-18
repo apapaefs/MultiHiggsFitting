@@ -177,6 +177,7 @@ class FitConfig:
     basis: str
     terms: tuple[tuple[int, ...], ...]
     normalize_to_sm: bool = True
+    term_map: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], ndims: int) -> "FitConfig":
@@ -192,6 +193,7 @@ class FitConfig:
             basis=str(data.get("basis", "chebyshev")),
             terms=tuple(clean_terms),
             normalize_to_sm=bool(data.get("normalize_to_sm", True)),
+            term_map=None if data.get("term_map") is None else str(data["term_map"]),
         )
 
 

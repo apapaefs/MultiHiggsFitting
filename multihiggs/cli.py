@@ -26,6 +26,7 @@ from .fit import fit_results_csv, format_polynomial_report
 from .grid import generate_scan_points
 from .histograms import write_histogram_csv
 from .madgraph import run_madevent_points, run_mg5, write_madevent_card, write_process_card
+from .mheft import restricted_mheft_squared_order_cap
 from .results import discover_completed_runs, write_results_csv
 from .term_inference import format_inferred_terms, infer_terms_from_process_dir, update_config_fit_terms
 from .term_maps import resolve_term_map
@@ -92,7 +93,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     fit_parser.add_argument(
         "--term-map",
-        help="Print an additional polynomial block in the named term map when using --print-polynomial",
+        help="Term map for --physical-basis or additional polynomial output with --print-polynomial",
+    )
+    fit_parser.add_argument(
+        "--expand-term-map",
+        action="store_true",
+        help="Also print expanded polynomial coefficients for the selected --term-map",
+    )
+    fit_parser.add_argument(
+        "--physical-basis",
+        action="store_true",
+        help="Infer a physical_monomial fit basis from the generated process before fitting",
+    )
+    fit_parser.add_argument(
+        "--amplitude-basis",
+        choices=("sm_like_hhh",),
+        help="Project inferred physical amplitudes onto a named compact amplitude basis before fitting",
     )
 
     contour_parser = add_config_command(subparsers, "contour", "Plot a two-variable normalized fit contour")
@@ -194,6 +210,21 @@ def main(argv: list[str] | None = None) -> int:
         "--term-map",
         help="Also print inferred polynomial powers in the named term map",
     )
+    infer_parser.add_argument(
+        "--expand-term-map",
+        action="store_true",
+        help="Also print expanded polynomial powers for the selected --term-map",
+    )
+    infer_parser.add_argument(
+        "--physical-basis",
+        action="store_true",
+        help="Infer/update terms in the selected --term-map as the physical fit basis",
+    )
+    infer_parser.add_argument(
+        "--amplitude-basis",
+        choices=("sm_like_hhh",),
+        help="Project inferred physical amplitudes onto a named compact amplitude basis",
+    )
 
     args = parser.parse_args(argv)
     config = load_config(args.config)
@@ -217,7 +248,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "hist":
         return command_hist(config, args.output, args.observables, args.run_numbers, args.min_events)
     if args.command == "fit":
-        return command_fit(config, args.input, args.output, args.print_polynomial, args.min_events, args.term_map)
+        return command_fit(
+            config,
+            args.input,
+            args.output,
+            args.print_polynomial,
+            args.min_events,
+            args.term_map,
+            args.expand_term_map,
+            args.physical_basis,
+            args.amplitude_basis,
+        )
     if args.command == "contour":
         return command_contour(
             config,
@@ -261,7 +302,15 @@ def main(argv: list[str] | None = None) -> int:
             args.log_y,
         )
     if args.command == "infer-terms":
-        return command_infer_terms(config, args.process_dir, not args.no_update_config, args.term_map)
+        return command_infer_terms(
+            config,
+            args.process_dir,
+            not args.no_update_config,
+            args.term_map,
+            args.expand_term_map,
+            args.physical_basis,
+            args.amplitude_basis,
+        )
     raise AssertionError(args.command)
 
 
@@ -381,22 +430,62 @@ def command_fit(
     print_polynomial: bool,
     min_events: int | None,
     term_map_name: str | None,
+    expand_term_map: bool,
+    physical_basis: bool,
+    amplitude_basis: str | None,
 ) -> int:
     input_path = input_path or default_path(config, "xsecs.csv")
     output = output or default_path(config, "fit.json")
-    results = fit_results_csv(config, input_path, output, min_events=min_events)
+    fit_config = config
+    if physical_basis:
+        if term_map_name is None:
+            raise ValueError("--physical-basis requires --term-map")
+        source_names = tuple(coupling.parameter for coupling in config.couplings)
+        term_map = resolve_term_map(config, term_map_name, source_names=source_names)
+        inferred_terms = infer_terms_from_process_dir(
+            config.process_dir,
+            source_names,
+            term_map=term_map,
+            physical_basis=True,
+            mheft_squared_order_cap=restricted_mheft_squared_order_cap(config),
+            amplitude_basis=amplitude_basis,
+        )
+        fit_config = replace(
+            config,
+            fit=replace(
+                config.fit,
+                basis="physical_monomial",
+                terms=inferred_terms.cross_section_terms,
+                term_map=term_map_name,
+            ),
+        )
+        print(f"Using inferred physical fit basis: {len(fit_config.fit.terms)} term(s)")
+        print(f"Physical-basis fit variables: {','.join(inferred_terms.coupling_names)}")
+        if amplitude_basis is not None:
+            print(f"Applied amplitude basis: {amplitude_basis}")
+    elif amplitude_basis is not None:
+        raise ValueError("--amplitude-basis requires --physical-basis")
+
+    results = fit_results_csv(fit_config, input_path, output, min_events=min_events)
     print(f"Wrote {len(results)} fit result(s) to {output}")
     for result in results[:10]:
         print(
             f"{result.label}: sigma_SM={result.sigma_sm:.6g} pb, "
-            f"rank={result.rank}/{len(config.fit.terms)}, chi2/dof={result.chi2_dof:.4g}"
+            f"rank={result.rank}/{len(fit_config.fit.terms)}, chi2/dof={result.chi2_dof:.4g}"
         )
     if len(results) > 10:
         print(f"... {len(results) - 10} additional bins")
     if print_polynomial:
         for result in results:
             print()
-            print(format_polynomial_report(config, result, term_map_name=term_map_name))
+            print(
+                format_polynomial_report(
+                    fit_config,
+                    result,
+                    term_map_name=term_map_name,
+                    expand_term_map=expand_term_map,
+                )
+            )
     return 0
 
 
@@ -529,20 +618,37 @@ def command_infer_terms(
     process_dir: Path | None,
     update_config: bool,
     term_map_name: str | None,
+    expand_term_map: bool,
+    physical_basis: bool,
+    amplitude_basis: str | None,
 ) -> int:
     process_dir = process_dir or config.process_dir
-    result = infer_terms_from_process_dir(
-        process_dir,
-        tuple(coupling.parameter for coupling in config.couplings),
-    )
+    if physical_basis and term_map_name is None:
+        raise ValueError("--physical-basis requires --term-map")
+    if amplitude_basis is not None and not physical_basis:
+        raise ValueError("--amplitude-basis requires --physical-basis")
+    source_names = tuple(coupling.parameter for coupling in config.couplings)
     term_map = (
         None
         if term_map_name is None
-        else resolve_term_map(config, term_map_name, source_names=result.coupling_names)
+        else resolve_term_map(config, term_map_name, source_names=source_names)
     )
-    print(format_inferred_terms(result, term_map=term_map))
+    result = infer_terms_from_process_dir(
+        process_dir,
+        source_names,
+        term_map=term_map,
+        physical_basis=physical_basis,
+        mheft_squared_order_cap=restricted_mheft_squared_order_cap(config),
+        amplitude_basis=amplitude_basis,
+    )
+    print(format_inferred_terms(result, term_map=term_map, expand_term_map=expand_term_map))
     if update_config:
-        update_config_fit_terms(config.path, result.cross_section_terms)
+        update_config_fit_terms(
+            config.path,
+            result.cross_section_terms,
+            basis="physical_monomial" if physical_basis else None,
+            term_map_name=term_map_name if physical_basis else None,
+        )
         print()
         print(f"WARNING: Updated [fit].terms in {config.path}.")
         print("WARNING: Subsequent `fit` commands will use these inferred terms from the config file.")

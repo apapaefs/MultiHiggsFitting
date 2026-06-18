@@ -177,6 +177,21 @@ def transform_coefficients(
     return mapped_powers, mapped_coefficients, mapped_covariance
 
 
+def transform_mapped_coefficients_to_sources(
+    powers: Sequence[Power],
+    coefficients: np.ndarray,
+    covariance: np.ndarray,
+    term_map: ResolvedTermMap,
+) -> tuple[list[Power], np.ndarray, np.ndarray]:
+    mapped_powers, transform = affine_transform_matrix(
+        powers,
+        [-offset for offset in term_map.offsets],
+    )
+    mapped_coefficients = np.dot(transform, coefficients)
+    mapped_covariance = np.dot(transform, np.dot(covariance, transform.T))
+    return mapped_powers, mapped_coefficients, mapped_covariance
+
+
 def affine_transform_matrix(
     powers: Sequence[Power],
     offsets: Sequence[float],
@@ -229,3 +244,25 @@ def format_power_label(power: Power, names: Sequence[str]) -> str:
         else:
             pieces.append(f"{name}^{exponent}")
     return "*".join(pieces) if pieces else "1"
+
+
+def format_factored_power_label(power: Power, term_map: ResolvedTermMap) -> str:
+    pieces = []
+    for exponent, name, variable in zip(power, term_map.names, term_map.active_variables):
+        if exponent == 0:
+            continue
+        factor = name if variable is None else inverse_factor_label(variable)
+        if exponent == 1:
+            pieces.append(factor)
+        else:
+            pieces.append(f"{factor}^{exponent}")
+    return "*".join(pieces) if pieces else "1"
+
+
+def inverse_factor_label(variable: TermMapVariable) -> str:
+    offset = variable.offset
+    if abs(offset) < 1e-15:
+        return variable.name
+    if offset > 0.0:
+        return f"({variable.name}-{offset:g})"
+    return f"({variable.name}+{-offset:g})"

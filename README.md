@@ -233,6 +233,77 @@ multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
 
 The built-in `mheft_kappa` map rewrites MHEFT deviations as
 `KT = 1 + CT1`, `K3 = 1 + D3`, and `K4 = 1 + D4`.
+Mapped output is minimal by default: an inferred term such as `CT1*D3` is
+printed as `(KT-1)*(K3-1)`, preserving one entry per independent coefficient.
+To also inspect the fully expanded polynomial support in `KT`, `K3`, and `K4`,
+add `--expand-term-map`:
+
+```bash
+multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --no-update-config --term-map mheft_kappa --expand-term-map
+```
+
+To infer a true physical basis instead, add `--physical-basis`. In this mode
+the UFO coupling expressions are parsed with coefficients, and the restricted5
+SM plus deviation pairs for `ttH`, `HHH`, and `HHHH` are merged into `KT`,
+`K3`, and `K4` factors when both pieces appear in the generated matrix code:
+
+```bash
+multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --term-map mheft_kappa --physical-basis
+```
+
+When this mode updates the config, it sets:
+
+```toml
+[fit]
+basis = "physical_monomial"
+term_map = "mheft_kappa"
+```
+
+The resulting `[fit].terms` are powers of the physical fit variables, for
+example `KT, CT2, CT3, K3, K4` in restricted5 configs. `CT2` and `CT3` remain
+ordinary contact terms; only `CT1`, `D3`, and `D4` are shifted to `KT`, `K3`,
+and `K4`.
+
+For loop-induced SM-like triple-Higgs studies, add `--amplitude-basis
+sm_like_hhh` to project the inferred physical amplitudes onto the compact
+literature basis before squaring:
+
+```bash
+multihiggs infer-terms configs/gg_hhh_restricted5_ct_c3_d4_validation.toml \
+  --term-map mheft_kappa --physical-basis --amplitude-basis sm_like_hhh
+```
+
+For the available `KT,K3,K4` subspace, this keeps the four amplitude
+structures `KT^3`, `KT^2*K3`, `KT*K3^2`, and `KT*K4`, treating missing
+SM-like kappas as fixed factors. For example, if `K4` is not in the fit basis,
+the `KT*K4` structure projects to `KT`. Additional non-SM variables such as
+`CT2` and `CT3` are preserved in the projected amplitude support instead of
+being shifted or dropped.
+
+The same inferred basis can also be used directly for a fit without rewriting
+the config:
+
+```bash
+multihiggs fit configs/gg_hhh_restricted5_ct_c3_d4_validation.toml \
+  --term-map mheft_kappa --physical-basis --amplitude-basis sm_like_hhh
+```
+
+In this mode the fit command infers a temporary `physical_monomial` basis from
+the generated process, prints the number of terms being fitted, and leaves the
+input TOML unchanged.
+
+For the restricted5 model, generated MG5 process cards and inferred
+cross-section terms are also restricted by the maximum squared MHEFT order. If
+the process string explicitly contains a constraint such as `MHEFT^2<=6`, that
+value is used. Otherwise the default cap is twice the number of final-state
+Higgs bosons in the primary process: `MHEFT^2<=4` for `hh`, `MHEFT^2<=6` for
+`hhh`, `MHEFT^2<=8` for `hhhh`, and so on. For loop-induced restricted5
+processes with `[noborn=QCD]`, the generated card normalizes this to
+`[noborn=QCD MHEFT] MHEFT^2<=N`; without a bracket, the cap is appended at the
+end of the `generate ...` line. The applied cap is printed in the
+`infer-terms` report.
 
 Treat the output as a generated cross-check, not a proof: cancellations or
 model subtleties can still remove or add practical fit requirements. The
@@ -273,12 +344,21 @@ multihiggs fit configs/gg_hhh_c3d4.toml --print-polynomial
 That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
 to the constant term, monomial coefficients in fitted variables such as
 `k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
-For MHEFT-style shifted variables, request an additional mapped coefficient
-block:
+For MHEFT-style shifted variables, request an additional minimal mapped
+coefficient block:
 
 ```bash
 multihiggs fit configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
   --print-polynomial --term-map mheft_kappa
+```
+
+This preserves the fitted coefficient count and prints factors such as
+`(KT-1)^2*(K3-1)`. To also print the derived expanded polynomial in the mapped
+variables, add `--expand-term-map`:
+
+```bash
+multihiggs fit configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
+  --print-polynomial --term-map mheft_kappa --expand-term-map
 ```
 
 The fitted result can also be plotted as a normalized two-variable contour;
@@ -355,7 +435,28 @@ KT = 1 + CT1
 
 Use `--term-map mheft_kappa` with `infer-terms` to print inferred powers in
 `K3`, `K4`, and `KT`, or with `fit --print-polynomial` to print an additional
-coefficient block in those variables.
+coefficient block in those variables. Mapped output is minimal/factored by
+default, so shifted variables keep one term per independent coefficient. Add
+`--expand-term-map` to also print the fully expanded polynomial in the mapped
+variables. The expanded block is derived output and may contain more monomials
+than the number of independent fitted coefficients.
+
+For a true fitted physical basis, use `infer-terms --term-map mheft_kappa
+--physical-basis`. This writes `basis = "physical_monomial"` and
+`term_map = "mheft_kappa"` under `[fit]`; subsequent `fit` commands evaluate
+each term directly as a monomial in the mapped variables. For example, a term
+`[2, 0, 1]` in a `KT,CT2,K3` basis is evaluated as `KT^2*K3`, with one fitted
+coefficient, not as separate expanded powers of `CT1` and `D3`.
+
+Alternatively, use `fit --term-map mheft_kappa --physical-basis` to infer and
+use the physical fit basis for that fit only, without updating `[fit]` in the
+config.
+
+For `gg > h h h` SM-like kappa studies, `--amplitude-basis sm_like_hhh`
+projects the physical amplitude support to the compact `KT,K3,K4` HHH basis
+before forming cross-section powers. Missing SM-like kappas are treated as
+fixed factors, while non-SM contact variables such as `CT2` and `CT3` remain
+explicit.
 
 Custom maps can be defined as top-level TOML blocks:
 
