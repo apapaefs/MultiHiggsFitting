@@ -79,6 +79,10 @@ BUILTIN_TERM_MAPS: dict[str, TermMap] = {
             TermMapVariable(source="D4", name="K4", offset=1.0),
             TermMapVariable(source="d4", name="K4", offset=1.0),
             TermMapVariable(source="CT1", name="KT", offset=1.0),
+            TermMapVariable(source="KZ", name="KZ", offset=0.0),
+            TermMapVariable(source="KZZ", name="KZZ", offset=0.0),
+            TermMapVariable(source="KW", name="KW", offset=0.0),
+            TermMapVariable(source="KWW", name="KWW", offset=0.0),
         ),
     ),
 }

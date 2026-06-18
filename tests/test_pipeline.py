@@ -445,6 +445,166 @@ offset = 1.0
             self.assertEqual(term_map.variables[0].name, "YT")
             self.assertEqual(term_map.variables[0].offset, 1.0)
 
+    def test_vv_kappa_couplings_select_vv_model_and_default_to_sm_one(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                """
+[process]
+name = "fixture_vv"
+mg5_path = "MG5"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h [noborn=QCD]"
+output = "proc"
+
+[[couplings]]
+name = "KZ"
+parameter = "KZ"
+fit_name = "KZ"
+range = [0.5, 1.5]
+points = 3
+
+[[couplings]]
+name = "KZZ"
+parameter = "KZZ"
+fit_name = "KZZ"
+range = [0.5, 1.5]
+points = 3
+
+[[couplings]]
+name = "KW"
+parameter = "KW"
+fit_name = "KW"
+range = [0.5, 1.5]
+points = 3
+
+[[couplings]]
+name = "KWW"
+parameter = "KWW"
+fit_name = "KWW"
+range = [0.5, 1.5]
+points = 3
+
+[fit]
+basis = "physical_monomial"
+terms = [[0, 0, 0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+            points = generate_scan_points(config)
+
+            self.assertEqual(config.model, "heft_loop_sm_restricted5VV")
+            self.assertEqual([coupling.sm_value for coupling in config.couplings], [1.0, 1.0, 1.0, 1.0])
+            self.assertEqual(points[0].values, (1.0, 1.0, 1.0, 1.0))
+
+    def test_vv_process_card_uses_vv_model_and_restricted_mheft_cap(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            output = Path(tmpdir) / "process.mg5"
+            config_path.write_text(
+                """
+[process]
+name = "fixture_vv"
+mg5_path = "MG5"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h [noborn=QCD]"
+output = "proc"
+
+[[couplings]]
+name = "KZ"
+parameter = "KZ"
+fit_name = "KZ"
+range = [0.5, 1.5]
+points = 3
+
+[fit]
+basis = "physical_monomial"
+terms = [[0]]
+""",
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+            write_process_card(config, output)
+
+            text = output.read_text(encoding="utf-8")
+            self.assertIn("import model heft_loop_sm_restricted5VV", text)
+            self.assertIn("generate g g > h h [noborn=QCD MHEFT] MHEFT^2<=4", text)
+
+    def test_mheft_kappa_term_map_includes_vv_kappas_as_physical_variables(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                """
+[process]
+name = "fixture_vv"
+mg5_path = "MG5"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h [noborn=QCD]"
+output = "proc"
+
+[[couplings]]
+name = "ct"
+parameter = "CT1"
+fit_name = "ct"
+range = [-0.5, 0.5]
+points = 3
+
+[[couplings]]
+name = "KZ"
+parameter = "KZ"
+fit_name = "KZ"
+range = [0.5, 1.5]
+points = 3
+
+[[couplings]]
+name = "KZZ"
+parameter = "KZZ"
+fit_name = "KZZ"
+range = [0.5, 1.5]
+points = 3
+
+[[couplings]]
+name = "KW"
+parameter = "KW"
+fit_name = "KW"
+range = [0.5, 1.5]
+points = 3
+
+[[couplings]]
+name = "KWW"
+parameter = "KWW"
+fit_name = "KWW"
+range = [0.5, 1.5]
+points = 3
+
+[fit]
+basis = "physical_monomial"
+terms = [[0, 0, 0, 0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+            term_map = resolve_term_map(config, "mheft_kappa")
+
+            self.assertEqual(term_map.names, ("KT", "KZ", "KZZ", "KW", "KWW"))
+            self.assertEqual(term_map.offsets, (1.0, 0.0, 0.0, 0.0, 0.0))
+            self.assertEqual(term_map.mapping_text(), "KT=1+CT1, KZ=KZ, KZZ=KZZ, KW=KW, KWW=KWW")
+
+    def test_vv_ufo_defaults_use_sm_kappa_values(self):
+        parameters = (ROOT / "models" / "heft_loop_sm_restricted5VV" / "parameters.py").read_text(encoding="utf-8")
+        restrict = (ROOT / "models" / "heft_loop_sm_restricted5VV" / "restrict_default.dat").read_text(encoding="utf-8")
+
+        for name in ("KZ", "KZZ", "KW", "KWW"):
+            self.assertRegex(parameters, rf"(?s){name} = Parameter\(name = '{name}',.*?value = 1\.0,", msg=name)
+        self.assertIn("998 1.0000e+00 # KZ", restrict)
+        self.assertIn("999 1.0000e+00 # KZZ", restrict)
+        self.assertIn("991 1.0000e+00 # KW", restrict)
+        self.assertIn("992 1.0000e+00 # KWW", restrict)
+
     def test_restricted5_tthhh_validation_maps_readable_modifier_names(self):
         config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")
         points = generate_scan_points(config)
@@ -535,7 +695,11 @@ offset = 1.0
         self.assertEqual(config.scan.extra_set_commands, ["set CT2 0.0", "set CT3 0.0"])
         self.assertGreater(len(config.fit.terms), 0)
         self.assertLessEqual(len(config.fit.terms), len(points))
-        self.assertIn((0, 0, 0), config.fit.terms)
+        if config.fit.basis == "physical_monomial":
+            self.assertEqual(config.fit.term_map, "mheft_kappa")
+            self.assertTrue(all(sum(term) <= 6 for term in config.fit.terms))
+        else:
+            self.assertIn((0, 0, 0), config.fit.terms)
         self.assertTrue(all(len(term) == 3 for term in config.fit.terms))
 
     def test_scan_defaults_to_ten_thousand_events(self):

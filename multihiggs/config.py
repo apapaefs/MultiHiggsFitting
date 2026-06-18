@@ -52,6 +52,23 @@ DEFAULT_NO_CUT_COMMANDS = [
 
 
 DEFAULT_NEVENTS = 10000
+RESTRICTED5_MODEL = "heft_loop_sm_restricted5"
+RESTRICTED5_VV_MODEL = "heft_loop_sm_restricted5VV"
+VV_KAPPA_PARAMETERS = frozenset({"KZ", "KZZ", "KW", "KWW"})
+
+
+def is_vv_kappa_parameter(name: str) -> bool:
+    return str(name).upper() in VV_KAPPA_PARAMETERS
+
+
+def default_sm_value(parameter: str) -> float:
+    return 1.0 if is_vv_kappa_parameter(parameter) else 0.0
+
+
+def model_for_couplings(model: str, couplings: tuple["CouplingConfig", ...]) -> str:
+    if model == RESTRICTED5_MODEL and any(is_vv_kappa_parameter(coupling.parameter) for coupling in couplings):
+        return RESTRICTED5_VV_MODEL
+    return model
 
 
 @dataclass(frozen=True)
@@ -69,17 +86,18 @@ class CouplingConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CouplingConfig":
         name = str(data["name"])
+        parameter = str(data.get("parameter", name))
         fit_range = data.get("range", data.get("fit_range"))
         if fit_range is None or len(fit_range) != 2:
             raise ValueError(f"Coupling {name!r} must define range = [min, max]")
         return cls(
             name=name,
-            parameter=str(data.get("parameter", name)),
+            parameter=parameter,
             fit_name=str(data.get("fit_name", name)),
             fit_range=(float(fit_range[0]), float(fit_range[1])),
             points=int(data.get("points", 1)),
             fit_offset=float(data.get("fit_offset", 0.0)),
-            sm_value=float(data.get("sm_value", 0.0)),
+            sm_value=float(data.get("sm_value", default_sm_value(parameter))),
             significant_digits=int(data.get("significant_digits", 6)),
             value_format=data.get("value_format"),
         )
@@ -258,7 +276,7 @@ class ProjectConfig:
             path=path,
             name=str(process.get("name", process.get("output", "process"))),
             mg5_path=Path(process["mg5_path"]).expanduser(),
-            model=str(process["model"]),
+            model=model_for_couplings(str(process["model"]), couplings),
             generate=str(process["generate"]),
             output=str(process["output"]),
             settings=tuple(str(item) for item in process.get("settings", DEFAULT_MG_SETTINGS)),

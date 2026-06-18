@@ -3,11 +3,18 @@ from __future__ import annotations
 import re
 
 
+RESTRICTED_MHEFT_MODELS = frozenset({"heft_loop_sm_restricted5", "heft_loop_sm_restricted5VV"})
+
+
+def is_restricted_mheft_model(model: str) -> bool:
+    return model in RESTRICTED_MHEFT_MODELS
+
+
 def restricted_mheft_squared_order_cap(config) -> int | None:
     explicit = explicit_mheft_squared_order_cap(config.generate)
     if explicit is not None:
         return explicit
-    if config.model != "heft_loop_sm_restricted5":
+    if not is_restricted_mheft_model(config.model):
         return None
     final_state = primary_final_state(config.generate)
     higgs_count = sum(1 for token in process_tokens(final_state) if token.lower() == "h")
@@ -17,7 +24,7 @@ def restricted_mheft_squared_order_cap(config) -> int | None:
 
 
 def generate_with_restricted_mheft_cap(config) -> str:
-    if config.model != "heft_loop_sm_restricted5":
+    if not is_restricted_mheft_model(config.model):
         return config.generate
     cap = restricted_mheft_squared_order_cap(config)
     if cap is None:
