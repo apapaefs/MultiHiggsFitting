@@ -331,12 +331,16 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(points), 41)
         self.assertEqual(points[0].values, (0.0, 0.0))
         self.assertEqual(points[0].texts, ("0.0", "0.0"))
+        self.assertEqual(config.fit.basis, "physical_monomial")
+        self.assertEqual(config.fit.term_map, "mheft_kappa")
 
     def test_hhhh_grid_matches_expected_size_and_terms(self):
         config = load_config(ROOT / "configs" / "gg_hhhh_c3d4.toml")
         points = generate_scan_points(config)
         self.assertEqual(len(points), 41)
         self.assertEqual(len(config.fit.terms), 15)
+        self.assertEqual(config.fit.basis, "physical_monomial")
+        self.assertEqual(config.fit.term_map, "mheft_kappa")
 
     def test_hh_validation_grid_scans_c3_directly(self):
         config = load_config(ROOT / "configs" / "gg_hh_c3_validation.toml")
@@ -349,6 +353,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(max(values), 20.0)
         self.assertEqual(config.couplings[0].fit_name, "c3")
         self.assertEqual(config.couplings[0].fit_offset, 0.0)
+        self.assertEqual(config.fit.basis, "physical_monomial")
+        self.assertEqual(config.fit.term_map, "mheft_kappa")
         self.assertEqual(config.fit.terms, ((0,), (1,), (2,)))
 
     def test_tthh_validation_grid_scans_c3_directly(self):
@@ -361,6 +367,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(max(values), 20.0)
         self.assertEqual(config.couplings[0].fit_name, "c3")
         self.assertEqual(config.couplings[0].fit_offset, 0.0)
+        self.assertEqual(config.fit.basis, "physical_monomial")
+        self.assertEqual(config.fit.term_map, "mheft_kappa")
         self.assertEqual(config.fit.terms, ((0,), (1,), (2,)))
 
     def test_tthhh_validation_grid_scans_c3_d4_directly(self):
@@ -377,6 +385,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(max(d4_values), 100.0)
         self.assertEqual(config.couplings[0].fit_offset, 0.0)
         self.assertEqual(config.couplings[1].fit_offset, 0.0)
+        self.assertEqual(config.fit.basis, "physical_monomial")
+        self.assertEqual(config.fit.term_map, "mheft_kappa")
         self.assertEqual(
             config.fit.terms,
             (
@@ -963,8 +973,8 @@ offset = 1.0
         yerr = np.ones(len(values)) * 0.01
         result = fit_values(config, values, y, yerr, "synthetic")
         report = format_polynomial_report(config, result)
-        self.assertIn("Absolute Chebyshev coefficients:", report)
-        self.assertIn("Physical monomial coefficients in k3,k4:", report)
+        self.assertIn("Absolute physical-basis coefficients:", report)
+        self.assertIn("Physical monomial coefficients in K3,K4:", report)
         self.assertIn("Physical polynomial coefficients in c3,d4:", report)
 
     def test_fit_polynomial_report_can_print_mheft_kappa_term_map(self):
@@ -1156,7 +1166,7 @@ terms = [
         self.assertIn("set pt_min_pdg {}", block)
         self.assertIn("set eta_max_pdg {}", block)
         self.assertIn("set mxx_min_pdg {}", block)
-        self.assertIn("set nevents 10000", block)
+        self.assertIn(f"set nevents {config.scan.nevents}", block)
 
     def test_run_commands_accept_relative_mg5_path(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
@@ -1704,6 +1714,87 @@ terms = [[0]]
             },
         )
 
+    def test_sm_like_hhh_amplitude_basis_handles_tthh_subspace(self):
+        names = ("KT", "CT2", "K3")
+        amplitude_terms = {
+            (0, 0, 0),
+            (1, 0, 0),
+            (0, 0, 1),
+            (2, 0, 0),
+            (1, 0, 1),
+            (0, 1, 0),
+        }
+
+        projected = project_amplitude_terms(amplitude_terms, names, "sm_like_hhh")
+
+        self.assertEqual(
+            projected,
+            {
+                (2, 0, 0),
+                (1, 0, 1),
+                (0, 1, 0),
+            },
+        )
+
+    def test_sm_like_amplitude_basis_handles_hhhh_subspace(self):
+        names = ("KT", "K3", "K4", "CT2")
+        amplitude_terms = {
+            (0, 0, 0, 0),
+            (2, 0, 0, 0),
+            (1, 1, 0, 0),
+            (3, 0, 0, 0),
+            (2, 1, 0, 0),
+            (1, 2, 0, 0),
+            (1, 0, 1, 0),
+            (4, 0, 0, 0),
+            (3, 1, 0, 0),
+            (2, 2, 0, 0),
+            (1, 3, 0, 0),
+            (2, 0, 1, 0),
+            (1, 1, 1, 0),
+            (0, 0, 0, 1),
+        }
+
+        projected = project_amplitude_terms(amplitude_terms, names, "sm_like")
+
+        self.assertEqual(
+            projected,
+            {
+                (4, 0, 0, 0),
+                (3, 1, 0, 0),
+                (2, 2, 0, 0),
+                (1, 3, 0, 0),
+                (2, 0, 1, 0),
+                (1, 1, 1, 0),
+                (0, 0, 0, 1),
+            },
+        )
+
+    def test_sm_like_amplitude_basis_allows_missing_kt_for_c3d4_model(self):
+        names = ("K3", "K4")
+        amplitude_terms = {
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (0, 1),
+            (3, 0),
+            (1, 1),
+        }
+
+        projected = project_amplitude_terms(amplitude_terms, names, "sm_like")
+
+        self.assertEqual(
+            projected,
+            {
+                (0, 0),
+                (1, 0),
+                (2, 0),
+                (0, 1),
+                (3, 0),
+                (1, 1),
+            },
+        )
+
     def test_infer_terms_sm_like_hhh_amplitude_basis_prints_compact_kappa_basis(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_root = Path(tmpdir)
@@ -1776,6 +1867,136 @@ terms = [[0, 0, 0]]
             self.assertIn("Number of polynomial terms: 9\nWARNING: CHECK", output)
             self.assertNotIn("  KT\n", output)
             self.assertNotIn("  K3\n", output)
+
+    def test_builtin_mheft_kappa_map_matches_loop_c3d4_sources(self):
+        config = load_config(ROOT / "configs" / "gg_hhh_c3d4.toml")
+
+        term_map = resolve_term_map(config, "mheft_kappa", source_names=("c3", "d4"))
+
+        self.assertEqual(term_map.names, ("K3", "K4"))
+        self.assertEqual(term_map.mapping_text(), "K3=1+c3, K4=1+d4")
+
+    def test_infer_terms_mheft_basis_sm_like_shorthand_handles_loop_c3d4_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5"
+            process_dir = mg5_path / "proc"
+            write_generated_process_fixture(process_dir)
+            config_path = tmp_root / "config.toml"
+            config_path.write_text(
+                f"""
+[process]
+name = "fixture"
+mg5_path = "{mg5_path}"
+model = "loop_sm_c3d4"
+generate = "g g > h h h [noborn=QCD]"
+output = "proc"
+
+[[couplings]]
+name = "c3"
+parameter = "c3"
+fit_name = "k3"
+range = [0.0, 2.0]
+points = 3
+fit_offset = 1.0
+
+[[couplings]]
+name = "d4"
+parameter = "d4"
+fit_name = "k4"
+range = [0.0, 2.0]
+points = 3
+fit_offset = 1.0
+
+[fit]
+basis = "chebyshev"
+terms = [[0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = main([
+                    "infer-terms",
+                    str(config_path),
+                    "--no-update-config",
+                    "--mheft-basis",
+                    "sm-like",
+                ])
+
+            self.assertEqual(status, 0)
+            output = stdout.getvalue()
+            self.assertIn("Applied amplitude basis: sm_like", output)
+            self.assertIn("Physical-basis fit variables: K3,K4", output)
+            self.assertIn("Mapping: K3=1+c3, K4=1+d4", output)
+            self.assertIn("GC_C3: [1, 0]", output)
+            self.assertIn("GC_D4: [0, 1]", output)
+            self.assertIn("  1", output)
+            self.assertIn("  K3", output)
+            self.assertIn("  K4", output)
+            self.assertIn("  K3*K4", output)
+            self.assertIn("Number of polynomial terms: 6", output)
+
+    def test_infer_terms_mheft_basis_sm_like_shorthand(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            mg5_path = tmp_root / "MG5"
+            process_dir = mg5_path / "proc"
+            write_sm_like_hhh_madloop_fixture(process_dir)
+            config_path = tmp_root / "config.toml"
+            config_path.write_text(
+                f"""
+[process]
+name = "fixture"
+mg5_path = "{mg5_path}"
+model = "heft_loop_sm_restricted5"
+generate = "g g > h h h [noborn=QCD]"
+output = "proc"
+
+[[couplings]]
+name = "ct"
+parameter = "CT1"
+fit_name = "ct"
+range = [-1.0, 1.0]
+points = 7
+
+[[couplings]]
+name = "c3"
+parameter = "D3"
+fit_name = "c3"
+range = [-1.0, 1.0]
+points = 7
+
+[[couplings]]
+name = "d4"
+parameter = "D4"
+fit_name = "d4"
+range = [-1.0, 1.0]
+points = 7
+
+[fit]
+basis = "chebyshev"
+terms = [[0, 0, 0]]
+""",
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = main([
+                    "infer-terms",
+                    str(config_path),
+                    "--no-update-config",
+                    "--mheft-basis",
+                    "sm-like",
+                ])
+
+            self.assertEqual(status, 0)
+            output = stdout.getvalue()
+            self.assertIn("Applied amplitude basis: sm_like", output)
+            self.assertIn("Physical-basis fit variables: KT,K3,K4", output)
+            self.assertIn("Number of polynomial terms: 9", output)
 
     def test_fit_can_infer_physical_sm_like_hhh_basis_without_updating_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1878,16 +2099,14 @@ terms = [[0, 0, 0]]
                     str(xsecs),
                     "-o",
                     str(output_path),
-                    "--term-map",
-                    "mheft_kappa",
-                    "--physical-basis",
-                    "--amplitude-basis",
-                    "sm_like_hhh",
+                    "--mheft-basis",
+                    "sm-like",
                 ])
 
             self.assertEqual(status, 0)
             output = stdout.getvalue()
             self.assertIn("Using inferred physical fit basis: 9 term(s)", output)
+            self.assertIn("Applied amplitude basis: sm_like", output)
             self.assertIn("rank=9/9", output)
             fit_data = json.loads(output_path.read_text(encoding="utf-8"))
             fit_record = fit_data["fits"][0]

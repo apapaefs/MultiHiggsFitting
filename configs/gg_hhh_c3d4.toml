@@ -7,8 +7,8 @@ output = "gg_hhh_c3d4"
 
 [scan]
 run_number = "2"
-energy_tev = 14.0
-nevents = 10000
+energy_tev = 13.6
+nevents = 100
 strategy = "chebyshev_lobatto"
 sort = "sm_first"
 skip_existing = true
@@ -62,17 +62,18 @@ c3 = 0.92388
 d4 = 0.0
 
 [fit]
-basis = "chebyshev"
+term_map = "mheft_kappa"
+basis = "physical_monomial"
 terms = [
   [0, 0],
   [1, 0],
-  [2, 0],
-  [3, 0],
-  [4, 0],
   [0, 1],
+  [2, 0],
   [1, 1],
-  [2, 1],
   [0, 2],
+  [3, 0],
+  [2, 1],
+  [4, 0],
 ]
 normalize_to_sm = true
 

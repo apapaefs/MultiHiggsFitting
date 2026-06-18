@@ -1,30 +1,35 @@
 # MultiHiggsFitting
-A reusable MadGraph pipeline for scanning multi-Higgs production over anomalous
-couplings and fitting cross sections or binned distributions.
 
-The initial configs reproduce the `/mnt/ssd2/Projects/4H` `loop_sm_c3d4`
-workflow for:
+Reusable MadGraph tooling for scanning multi-Higgs production over anomalous
+couplings, collecting cross sections or LHE histograms, and fitting compact
+polynomial bases.
 
-- `gg -> h h h` in [configs/gg_hhh_c3d4.toml](configs/gg_hhh_c3d4.toml)
-- `gg -> h h h h` in [configs/gg_hhhh_c3d4.toml](configs/gg_hhhh_c3d4.toml)
+The main use case is loop-induced multi-Higgs production with either:
 
-There are also light validation configs:
+- the original `loop_sm_c3d4` model, where MadGraph parameters are `c3,d4`;
+- the `heft_loop_sm_restricted5` model, where the MHEFT deviations include
+  `CT1, CT2, CT3, D3, D4`.
 
-- `gg -> h h [noborn=QCD]` in [configs/gg_hh_c3_validation.toml](configs/gg_hh_c3_validation.toml)
-- `gg -> t t~ h h` in [configs/gg_tthh_c3_validation.toml](configs/gg_tthh_c3_validation.toml)
-- `gg -> t t~ h h h` in [configs/gg_tthhh_c3d4_validation.toml](configs/gg_tthhh_c3d4_validation.toml)
-- `gg -> t t~ h h h` with the restricted5 model and `ct`, `ct2`, `c3`
-  modifiers in [configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml](configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml)
-- `gg -> h h h [noborn=QCD]` with the restricted5 model and `ct`, `c3`,
-  `d4` modifiers in [configs/gg_hhh_restricted5_ct_c3_d4_validation.toml](configs/gg_hhh_restricted5_ct_c3_d4_validation.toml)
-- `gg -> h h h [noborn=QCD]` with the restricted5 model and `ct`, `ct2`,
-  `ct3`, `c3`, `d4` modifiers in [configs/gg_hhh_restricted5_ct_ct2_ct3_c3_d4_validation.toml](configs/gg_hhh_restricted5_ct_ct2_ct3_c3_d4_validation.toml)
-- `gg -> h h h h [noborn=QCD]` with the restricted5 model and `c3`, `d4`
-  modifiers in [configs/gg_hhhh_restricted5_c3_d4_validation.toml](configs/gg_hhhh_restricted5_c3_d4_validation.toml)
-- `gg -> t t~ h h h` with the restricted5 model and `ct`, `c3`, `d4`
-  modifiers in [configs/gg_tthhh_restricted5_ct_c3_d4_validation.toml](configs/gg_tthhh_restricted5_ct_c3_d4_validation.toml)
+The shipped `c3,d4` configs scan the MadGraph parameters but fit the physical
+kappa variables
 
-## Setup
+```text
+K3 = 1 + c3
+K4 = 1 + d4
+```
+
+The restricted5 configs can use the same physical-basis machinery with
+
+```text
+KT = 1 + CT1
+K3 = 1 + D3
+K4 = 1 + D4
+```
+
+Non-SM contact variables such as `CT2` and `CT3` remain explicit fit
+variables.
+
+## Install
 
 From this repository:
 
@@ -32,21 +37,20 @@ From this repository:
 python3 -m pip install -e .
 ```
 
-For ad hoc use without installing, run commands as:
+For plotting commands:
+
+```bash
+python3 -m pip install -e '.[plot]'
+```
+
+For ad hoc use without installing, run commands through the module:
 
 ```bash
 python3 -m multihiggs grid configs/gg_hhh_c3d4.toml
 ```
 
-The code expects `numpy` and `tomli` on Python 3.10. They are declared in
+The package requires Python 3.10 or newer plus the dependencies in
 `pyproject.toml`.
-
-The contour-plotting command also needs matplotlib. To install the plotting
-extra, use:
-
-```bash
-python3 -m pip install -e '.[plot]'
-```
 
 ## MadGraph Setup
 
@@ -57,8 +61,8 @@ sudo apt-get update
 sudo apt-get install -y python3 gfortran g++ make wget tar gzip
 ```
 
-Install or unpack MG5/aMC. For a local checkout, put the MG5 directory at the
-repository root:
+Unpack MG5/aMC at the repository root, or edit `mg5_path` in the config you
+are using:
 
 ```bash
 tar -xf LTS_MG5aMC_v3.5.15.tar
@@ -70,27 +74,18 @@ The example configs assume:
 mg5_path = "MG5_aMC_v3_5_15"
 ```
 
-If MG5 is somewhere else, edit `mg5_path` in the config you are using. The
-original Linux workstation setup used
-`/mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15`.
-
-Install the UFO model used by the starter configs. The repository includes a
-clean copy under `models/loop_sm_c3d4`; copy or symlink it into the MG5 model
-directory. For the repo-local MG5 install:
+Install the UFO models into the MG5 model directory. For a repo-local MG5
+checkout:
 
 ```bash
 ln -s ../../models/loop_sm_c3d4 MG5_aMC_v3_5_15/models/loop_sm_c3d4
-```
-
-The repository also vendors `heft_loop_sm_restricted5` from
-`https://gitlab.com/apapaefs/multihiggs_loop_sm` at commit `99ba5ee90669`:
-
-```bash
 ln -s ../../models/heft_loop_sm_restricted5 MG5_aMC_v3_5_15/models/heft_loop_sm_restricted5
 ```
 
-If you are reproducing the old 4H area and prefer the archived copy, it is also
-available as `loop_sm_c3d4.tar.gz`:
+The restricted5 model is vendored from
+`https://gitlab.com/apapaefs/multihiggs_loop_sm` at commit `99ba5ee90669`.
+If you are reproducing the old 4H area and prefer the archived model, unpack
+the old tarball instead:
 
 ```bash
 tar -xzf /mnt/ssd2/Projects/4H/MG5_aMC_v3_5_15/models/loop_sm_c3d4.tar.gz \
@@ -112,12 +107,118 @@ display particles
 quit
 ```
 
-Loop-induced multi-Higgs runs need the loop libraries available at runtime.
-The pipeline automatically adds common MG5 `HEPTools` and `COLLIER` library
-paths under `mg5_path` to `LD_LIBRARY_PATH` when it launches MG5 or madevent.
+Loop-induced runs need MG5 loop libraries at runtime. The pipeline adds common
+MG5 `HEPTools` and `COLLIER` library paths under `mg5_path` to
+`LD_LIBRARY_PATH` when it launches MG5 or madevent.
 
-The generated madevent scan cards explicitly disable common run-card cuts by
-default. Each launch block sets:
+## Configs
+
+Primary `loop_sm_c3d4` configs:
+
+- [configs/gg_hhh_c3d4.toml](configs/gg_hhh_c3d4.toml): `gg -> h h h`
+- [configs/gg_hhhh_c3d4.toml](configs/gg_hhhh_c3d4.toml): `gg -> h h h h`
+
+Light validation configs:
+
+- [configs/gg_hh_c3_validation.toml](configs/gg_hh_c3_validation.toml):
+  `gg -> h h [noborn=QCD]`
+- [configs/gg_tthh_c3_validation.toml](configs/gg_tthh_c3_validation.toml):
+  `gg -> t t~ h h`
+- [configs/gg_tthhh_c3d4_validation.toml](configs/gg_tthhh_c3d4_validation.toml):
+  `gg -> t t~ h h h`
+- [configs/gg_tthh_restricted5_ct1_ct2_d3_validation.toml](configs/gg_tthh_restricted5_ct1_ct2_d3_validation.toml):
+  restricted5 `gg -> t t~ h h` with `CT1, CT2, D3`
+- [configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml](configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml):
+  restricted5 `gg -> t t~ h h h` with `CT1, CT2, D3`
+- [configs/gg_hhh_restricted5_ct_c3_d4_validation.toml](configs/gg_hhh_restricted5_ct_c3_d4_validation.toml):
+  restricted5 `gg -> h h h [noborn=QCD]` with `CT1, D3, D4`
+- [configs/gg_hhh_restricted5_ct_ct2_ct3_c3_d4_validation.toml](configs/gg_hhh_restricted5_ct_ct2_ct3_c3_d4_validation.toml):
+  restricted5 `gg -> h h h [noborn=QCD]` with `CT1, CT2, CT3, D3, D4`
+- [configs/gg_hhh_restricted5_ct1_ct2_ct3_d3_d4_validation.toml](configs/gg_hhh_restricted5_ct1_ct2_ct3_d3_d4_validation.toml):
+  same process with the explicit uppercase parameter names in the scan labels
+- [configs/gg_hhhh_restricted5_c3_d4_validation.toml](configs/gg_hhhh_restricted5_c3_d4_validation.toml):
+  restricted5 `gg -> h h h h [noborn=QCD]` with `D3, D4`
+- [configs/gg_tthhh_restricted5_ct_c3_d4_validation.toml](configs/gg_tthhh_restricted5_ct_c3_d4_validation.toml):
+  restricted5 `gg -> t t~ h h h` with `CT1, D3, D4`
+
+## Quick Workflow
+
+This is the concise end-to-end path for a run-number campaign. The
+`--mheft-basis sm-like` step asks the generated matrix code for the compact
+physical kappa basis before fitting.
+
+```bash
+CONFIG=configs/gg_hhh_c3d4.toml
+RUN=2
+
+multihiggs grid "$CONFIG" --run-number "$RUN"
+multihiggs generate-process "$CONFIG" --run
+multihiggs infer-terms "$CONFIG" --mheft-basis sm-like
+multihiggs scan "$CONFIG" --run-number "$RUN" --run
+multihiggs collect "$CONFIG" --run-number "$RUN"
+multihiggs fit "$CONFIG" --print-polynomial
+```
+
+What each command does:
+
+- `grid`: writes `outputs/<process>/scan_points.csv`.
+- `generate-process`: writes or runs the MG5 process card.
+- `infer-terms`: reads the generated HELAS/MadLoop code and updates
+  `[fit].terms`.
+- `scan`: writes or runs the madevent launch card.
+- `collect`: writes the collected cross sections to `xsecs.csv`.
+- `fit`: writes `fit.json` and, with `--print-polynomial`, prints a readable
+  polynomial report.
+
+Use `--no-update-config` with `infer-terms` when you only want to inspect the
+inferred basis:
+
+```bash
+multihiggs infer-terms "$CONFIG" --mheft-basis sm-like --no-update-config
+```
+
+## Scans And Run Selection
+
+The scan grid is controlled by `[[couplings]]` blocks. A coupling can scan one
+variable while reporting/fitting a shifted one:
+
+```toml
+[[couplings]]
+name = "c3"
+parameter = "c3"
+fit_name = "k3"
+range = [0.0, 2.0]
+points = 7
+fit_offset = 1.0
+sm_value = 0.0
+```
+
+Here the grid is built in `k3 = 1+c3`, then converted back to the MadGraph
+parameter `c3`. If `fit_offset = 0.0`, the grid is built directly in the scan
+parameter.
+
+With `sort = "sm_first"`, scan points are ordered by closeness to the SM point.
+For a wide `d4` range this means many `d4 = 0` points can appear first even
+though the full grid includes nonzero `d4` points.
+
+Completed runs are skipped when
+`Events/<run_name>/unweighted_events.lhe.gz` exists and has at least the
+configured event minimum. By default this minimum is `[scan].nevents`. Override
+it for quick or legacy samples:
+
+```bash
+multihiggs collect "$CONFIG" --run-number "$RUN" --min-events 1
+```
+
+Useful scan options:
+
+```bash
+multihiggs scan "$CONFIG" --max-runs 3
+multihiggs scan "$CONFIG" --force
+multihiggs scan "$CONFIG" --run-number 3 --run
+```
+
+Generated madevent cards disable common run-card cuts by default:
 
 ```text
 set dsqrt_shat 0.0
@@ -132,128 +233,42 @@ set mxx_min_pdg {}
 To intentionally use cuts, set `no_cuts = false` in `[scan]` and put the
 desired `set ...` commands in `extra_set_commands`.
 
-## Basic Workflow
-
-1. Inspect the scan points:
-
-```bash
-multihiggs grid configs/gg_hhh_c3d4.toml
-```
-
-This writes `outputs/gg_hhh/scan_points.csv`.
-
-To preview the same grid with a different run-number label without editing the
-config:
-
-```bash
-multihiggs grid configs/gg_hhh_c3d4.toml --run-number 3
-```
-
-2. Generate an MG5 process card:
-
-```bash
-multihiggs generate-process configs/gg_hhh_c3d4.toml
-```
-
-By default this only writes the card. To actually run MG5:
-
-```bash
-multihiggs generate-process configs/gg_hhh_c3d4.toml --run
-```
-
-Use `--force-output` if you want the MG5 `output ... -f` behavior.
-
-3. Write the madevent scan command file:
-
-```bash
-multihiggs scan configs/gg_hhh_c3d4.toml
-```
-
-This skips completed runs only when
-`Events/<run_name>/unweighted_events.lhe.gz` exists and has at least the
-configured event minimum. By default, that minimum is `[scan].nevents`, which
-defaults to `10000` if omitted. To run madevent:
-
-```bash
-multihiggs scan configs/gg_hhh_c3d4.toml --run
-```
-
-To launch a new campaign label from the CLI, override `[scan].run_number`:
-
-```bash
-multihiggs scan configs/gg_hhh_c3d4.toml --run-number 3 --run
-```
-
-This changes generated run folders such as `run_gg_hhh_3_...` for that command
-only; it does not rewrite the TOML file. The `collect` and `hist`
-`--run-number` options still select existing run numbers to read.
-
-Useful development options:
-
-```bash
-multihiggs scan configs/gg_hhh_c3d4.toml --max-runs 3
-multihiggs scan configs/gg_hhh_c3d4.toml --force
-```
-
-When running a scan, the pipeline launches selected points one at a time. If
-MadEvent reports the known zero-amplitude multichannel failure:
+If MadEvent reports the known zero-amplitude multichannel failure, the pipeline
+warns, skips that point, and continues with the remaining selected points:
 
 ```text
 Problem in the multi-channeling. All amp2 are zero but not the total matrix-element
 ```
 
-the pipeline prints a warning, skips that point, and continues with the
-remaining selected points. This can happen at exact cancellation points, for
-example in `heft_loop_sm_restricted5` when `CT1 = -1` cancels the SM `ttH`
-Yukawa contribution while the other relevant MHEFT couplings are zero. The
-command exits nonzero after continuing so the incomplete scan is not mistaken
-for a fully successful run.
+The command exits nonzero after continuing so the incomplete scan is not
+mistaken for a fully successful run.
 
-After generating a process directory, inspect the matrix-element coupling
-support that the generated HELAS code implies:
+## Physical Bases And Term Inference
+
+The inferred fit basis comes from the generated matrix-element code. The most
+useful mode is:
 
 ```bash
-multihiggs infer-terms configs/gg_tthh_c3_validation.toml
+multihiggs infer-terms "$CONFIG" --mheft-basis sm-like
 ```
 
-This prints the inferred amplitude support and rewrites `[fit].terms` in the
-config file, so subsequent `fit` commands use the inferred cross-section terms.
-To inspect without modifying the config, use:
+`--mheft-basis sm-like` is available for both `infer-terms` and `fit`. It is
+equivalent to:
 
-```bash
-multihiggs infer-terms configs/gg_tthh_c3_validation.toml --no-update-config
+```text
+--term-map mheft_kappa --physical-basis --amplitude-basis sm_like
 ```
 
-To also print the inferred polynomial support in a shifted variable map, use:
+It does not change the scan grid or the MadGraph parameter values. It changes
+the fit basis to the mapped physical variables:
 
-```bash
-multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --no-update-config --term-map mheft_kappa
+```text
+KT = 1 + CT1
+K3 = 1 + D3  or  K3 = 1 + c3
+K4 = 1 + D4  or  K4 = 1 + d4
 ```
 
-The built-in `mheft_kappa` map rewrites MHEFT deviations as
-`KT = 1 + CT1`, `K3 = 1 + D3`, and `K4 = 1 + D4`.
-Mapped output is minimal by default: an inferred term such as `CT1*D3` is
-printed as `(KT-1)*(K3-1)`, preserving one entry per independent coefficient.
-To also inspect the fully expanded polynomial support in `KT`, `K3`, and `K4`,
-add `--expand-term-map`:
-
-```bash
-multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --no-update-config --term-map mheft_kappa --expand-term-map
-```
-
-To infer a true physical basis instead, add `--physical-basis`. In this mode
-the UFO coupling expressions are parsed with coefficients, and the restricted5
-SM plus deviation pairs for `ttH`, `HHH`, and `HHHH` are merged into `KT`,
-`K3`, and `K4` factors when both pieces appear in the generated matrix code:
-
-```bash
-multihiggs infer-terms configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --term-map mheft_kappa --physical-basis
-```
-
-When this mode updates the config, it sets:
+With `infer-terms`, this writes:
 
 ```toml
 [fit]
@@ -261,222 +276,68 @@ basis = "physical_monomial"
 term_map = "mheft_kappa"
 ```
 
-The resulting `[fit].terms` are powers of the physical fit variables, for
-example `KT, CT2, CT3, K3, K4` in restricted5 configs. `CT2` and `CT3` remain
-ordinary contact terms; only `CT1`, `D3`, and `D4` are shifted to `KT`, `K3`,
-and `K4`.
+unless `--no-update-config` is used. With `fit`, it infers and uses the
+physical basis for that fit only, leaving the input TOML unchanged.
 
-For loop-induced SM-like triple-Higgs studies, add `--amplitude-basis
-sm_like_hhh` to project the inferred physical amplitudes onto the compact
-literature basis before squaring:
+The compact SM-like amplitude structures are:
+
+- HH/ttHH: `KT^2`, `KT*K3`
+- HHH: `KT^3`, `KT^2*K3`, `KT*K3^2`, `KT*K4`
+- HHHH: `KT^4`, `KT^3*K3`, `KT^2*K3^2`, `KT*K3^3`,
+  `KT^2*K4`, `KT*K3*K4`
+
+Missing SM-like kappas are treated as fixed factors. For example, in the
+`loop_sm_c3d4` model there is no scanned `KT`, so the HHH basis is projected
+onto the available `K3,K4` variables. Contact terms such as `CT2` and `CT3`
+are preserved explicitly.
+
+To print a mapped polynomial without changing the fitted basis, use the lower
+level map option:
 
 ```bash
-multihiggs infer-terms configs/gg_hhh_restricted5_ct_c3_d4_validation.toml \
-  --term-map mheft_kappa --physical-basis --amplitude-basis sm_like_hhh
+multihiggs infer-terms "$CONFIG" --no-update-config --term-map mheft_kappa
 ```
 
-For the available `KT,K3,K4` subspace, this keeps the four amplitude
-structures `KT^3`, `KT^2*K3`, `KT*K3^2`, and `KT*K4`, treating missing
-SM-like kappas as fixed factors. For example, if `K4` is not in the fit basis,
-the `KT*K4` structure projects to `KT`. Additional non-SM variables such as
-`CT2` and `CT3` are preserved in the projected amplitude support instead of
-being shifted or dropped.
+Add `--expand-term-map` to also see the fully expanded support in the mapped
+variables. Expanded output can contain more monomials than independent fitted
+coefficients.
 
-The same inferred basis can also be used directly for a fit without rewriting
-the config:
+For restricted5 processes, generated MG5 process cards and inferred
+cross-section terms are restricted by the maximum squared MHEFT order. If the
+process string already contains a constraint such as `MHEFT^2<=6`, that value
+is used. Otherwise the default cap is twice the number of final-state Higgs
+bosons in the primary process: `MHEFT^2<=4` for `hh`, `MHEFT^2<=6` for `hhh`,
+`MHEFT^2<=8` for `hhhh`, and so on. For loop-induced restricted5 processes
+with `[noborn=QCD]`, the generated card normalizes this to:
 
-```bash
-multihiggs fit configs/gg_hhh_restricted5_ct_c3_d4_validation.toml \
-  --term-map mheft_kappa --physical-basis --amplitude-basis sm_like_hhh
+```text
+[noborn=QCD MHEFT] MHEFT^2<=N
 ```
 
-In this mode the fit command infers a temporary `physical_monomial` basis from
-the generated process, prints the number of terms being fitted, and leaves the
-input TOML unchanged.
+Term inference is a generated-code cross-check, not a proof. Cancellations or
+model-specific details can still remove or add practical fit requirements, so
+the command prints warnings to check the inferred terms before production use.
 
-For the restricted5 model, generated MG5 process cards and inferred
-cross-section terms are also restricted by the maximum squared MHEFT order. If
-the process string explicitly contains a constraint such as `MHEFT^2<=6`, that
-value is used. Otherwise the default cap is twice the number of final-state
-Higgs bosons in the primary process: `MHEFT^2<=4` for `hh`, `MHEFT^2<=6` for
-`hhh`, `MHEFT^2<=8` for `hhhh`, and so on. For loop-induced restricted5
-processes with `[noborn=QCD]`, the generated card normalizes this to
-`[noborn=QCD MHEFT] MHEFT^2<=N`; without a bracket, the cap is appended at the
-end of the `generate ...` line. The applied cap is printed in the
-`infer-terms` report.
+## Fit Output
 
-Treat the output as a generated cross-check, not a proof: cancellations or
-model subtleties can still remove or add practical fit requirements. The
-command prints explicit warnings to check the inferred terms, and warns if the
-configured scan has fewer points than inferred fit terms.
+For physical-monomial configs such as `gg_hhh_c3d4`, `fit.json` stores fitted
+coefficients in the mapped variables, for example `K3,K4`, and also includes
+the equivalent polynomial in the original scan variables such as `c3,d4`.
 
-4. Collect completed cross sections:
+Print a readable report with:
 
 ```bash
-multihiggs collect configs/gg_hhh_c3d4.toml --run-number 2
-```
-
-This writes `outputs/gg_hhh/xsecs.csv`. `collect` uses the same configured
-event-count minimum as `scan`, so it will skip lower-stat run directories and
-print a warning. To collect older one-event integration samples, override the
-threshold:
-
-```bash
-multihiggs collect configs/gg_hhh_c3d4.toml --run-number 2 --min-events 1
-```
-
-5. Fit the cross section:
-
-```bash
-multihiggs fit configs/gg_hhh_c3d4.toml
-```
-
-This writes `outputs/gg_hhh/fit.json`, including Chebyshev coefficients,
-the covariance matrix, fit diagnostics, and monomial coefficients normalized
-to the SM point.
-
-To print the old-style coefficient blocks directly:
-
-```bash
-multihiggs fit configs/gg_hhh_c3d4.toml --print-polynomial
-```
-
-That prints absolute Chebyshev coefficients, Chebyshev coefficients normalized
-to the constant term, monomial coefficients in fitted variables such as
-`k3,k4`, and the equivalent polynomial in scan variables such as `c3,d4`.
-For MHEFT-style shifted variables, request an additional minimal mapped
-coefficient block:
-
-```bash
-multihiggs fit configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --print-polynomial --term-map mheft_kappa
-```
-
-This preserves the fitted coefficient count and prints factors such as
-`(KT-1)^2*(K3-1)`. To also print the derived expanded polynomial in the mapped
-variables, add `--expand-term-map`:
-
-```bash
-multihiggs fit configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --print-polynomial --term-map mheft_kappa --expand-term-map
-```
-
-The fitted result can also be plotted as a normalized two-variable contour;
-see [Contour Plots](#contour-plots).
-
-End-to-end example for a new run-number campaign:
-
-```bash
-CONFIG=configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml
-RUN=2
-
-multihiggs grid "$CONFIG" --run-number "$RUN"
-multihiggs generate-process "$CONFIG" --run
-multihiggs infer-terms "$CONFIG"
-multihiggs scan "$CONFIG" --run-number "$RUN" --run
-multihiggs collect "$CONFIG" --run-number "$RUN"
 multihiggs fit "$CONFIG" --print-polynomial
 ```
 
-## Adapting To A New Process Or Model
+For a Chebyshev config, the report also includes the absolute and normalized
+Chebyshev coefficients plus transformed monomial coefficients. For a
+physical-monomial config, the report starts directly from the fitted physical
+coefficients.
 
-Copy one of the config files and edit:
+## Histograms And Distributions
 
-- `[process]`: `name`, `mg5_path`, `model`, `generate`, and `output`
-- `[[couplings]]`: one entry per MadGraph parameter to scan
-- `[scan]`: run number, collider energy, events per point, and integration options
-- `[fit]`: Chebyshev terms to fit
-
-By default `[scan]` has `no_cuts = true`, so the launch card clears common
-MadGraph run-card cuts. Keep this for inclusive cross-section fits.
-
-The event settings in `[scan]` control both generation and completed-run
-detection:
-
-```toml
-[scan]
-nevents = 10000
-# Optional. If omitted, completed-run detection uses nevents.
-# Use 0 to accept any existing LHE file regardless of event count.
-min_events = 10000
-```
-
-For a fast cross-section-only integration scan where existing one-event samples
-should count as complete, set:
-
-```toml
-[scan]
-nevents = 1
-min_events = 1
-```
-
-For the 4H-style `c3,d4` scan, the fitted variables are physical kappas:
-
-```toml
-name = "c3"
-parameter = "c3"
-fit_name = "k3"
-range = [0.0, 2.0]
-fit_offset = 1.0
-```
-
-This means the grid is built in `k3 = c3 + 1`, while MadGraph receives `c3`.
-For a parameter scanned directly, set `fit_offset = 0.0`.
-
-Term maps are optional output transformations for polynomial reporting. They do
-not change the scan grid, MadGraph parameter values, or `[fit].terms`. The
-built-in `mheft_kappa` map is available without adding anything to a config:
-
-```text
-K3 = 1 + D3
-K4 = 1 + D4
-KT = 1 + CT1
-```
-
-Use `--term-map mheft_kappa` with `infer-terms` to print inferred powers in
-`K3`, `K4`, and `KT`, or with `fit --print-polynomial` to print an additional
-coefficient block in those variables. Mapped output is minimal/factored by
-default, so shifted variables keep one term per independent coefficient. Add
-`--expand-term-map` to also print the fully expanded polynomial in the mapped
-variables. The expanded block is derived output and may contain more monomials
-than the number of independent fitted coefficients.
-
-For a true fitted physical basis, use `infer-terms --term-map mheft_kappa
---physical-basis`. This writes `basis = "physical_monomial"` and
-`term_map = "mheft_kappa"` under `[fit]`; subsequent `fit` commands evaluate
-each term directly as a monomial in the mapped variables. For example, a term
-`[2, 0, 1]` in a `KT,CT2,K3` basis is evaluated as `KT^2*K3`, with one fitted
-coefficient, not as separate expanded powers of `CT1` and `D3`.
-
-Alternatively, use `fit --term-map mheft_kappa --physical-basis` to infer and
-use the physical fit basis for that fit only, without updating `[fit]` in the
-config.
-
-For `gg > h h h` SM-like kappa studies, `--amplitude-basis sm_like_hhh`
-projects the physical amplitude support to the compact `KT,K3,K4` HHH basis
-before forming cross-section powers. Missing SM-like kappas are treated as
-fixed factors, while non-SM contact variables such as `CT2` and `CT3` remain
-explicit.
-
-Custom maps can be defined as top-level TOML blocks:
-
-```toml
-[term_maps.custom_top]
-description = "Custom top modifier"
-
-[[term_maps.custom_top.variables]]
-source = "CT1"
-name = "YT"
-offset = 1.0
-```
-
-The `source` value is matched against the MadGraph/UFO parameter name first,
-with config names and fit names also accepted for fitted polynomial output.
-For the example above, `YT = 1 + CT1`.
-
-## Distribution Fits
-
-Configs can define `[[observables]]` for simple LHE histograms. Example:
+Configs can define `[[observables]]` for simple LHE histograms:
 
 ```toml
 [[observables]]
@@ -493,24 +354,7 @@ Build histograms:
 multihiggs hist configs/gg_hhh_c3d4.toml
 ```
 
-`hist` also uses the configured event-count minimum. With the starter configs,
-that means only 10k-event runs are histogrammed. You can override the threshold
-from the command line:
-
-```bash
-multihiggs hist configs/gg_hhhh_c3d4.toml --min-events 10000
-```
-
-The same explicit filter is available for `fit` when the input CSV contains an
-`event_count` column:
-
-```bash
-multihiggs fit configs/gg_hhhh_c3d4.toml \
-  --input outputs/gg_4h/histograms.csv \
-  --min-events 10000
-```
-
-Fit every histogram bin with the same polynomial basis:
+Fit every histogram bin with the same configured polynomial basis:
 
 ```bash
 multihiggs fit configs/gg_hhh_c3d4.toml \
@@ -518,7 +362,7 @@ multihiggs fit configs/gg_hhh_c3d4.toml \
   --output outputs/gg_hhh/hist_fit.json
 ```
 
-Plot fitted distributions at selected coupling points:
+Plot fitted distributions:
 
 ```bash
 multihiggs distribution configs/gg_hhh_c3d4.toml \
@@ -531,44 +375,27 @@ multihiggs distribution configs/gg_hhh_c3d4.toml \
 ```
 
 The SM distribution is included by default. Use `--no-sm` to omit it. Repeat
-`--point` to overlay several coupling points; any coupling not specified in a
-point is fixed at its configured `sm_value`.
-
-```bash
-multihiggs distribution configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --input outputs/gg_tthhh_restricted5_ct_ct2_c3_validation/hist_fit.json \
-  --observable hhh_mass \
-  --point ct=0.5,ct2=0.25,c3=-0.5 \
-  --point ct=-0.25,c3=0.5
-```
-
-The plot is drawn as a step histogram over the configured bin edges, with
-vertical error bars at the bin centers from the fit covariance. Horizontal
-bin-width error bars are not drawn. The SM reference is drawn as a black solid
-line, while repeated parameter points rotate through colors and line styles.
-By default the y-axis is the fitted bin cross section, `sigma_bin` in pb. Use
-`--density` to plot bin contents divided by bin width, and `--log-y` for a
-logarithmic y-axis.
+`--point` to overlay several coupling points; unspecified couplings are fixed
+to their configured `sm_value`. Use `--density` to plot bin contents divided by
+bin width and `--log-y` for a logarithmic y axis.
 
 For per-object observables such as `h_pt` with `which = "all"`, the histogram
 integral is multiplicity times the event cross section.
 
-## Contour Plots
+## Contours And Variations
 
-After fitting, use `multihiggs contour` to plot
-`sigma(axis_1, axis_2) / sigma_SM` for any two configured coupling variables:
+Plot a normalized two-variable contour:
 
 ```bash
 multihiggs contour configs/gg_hhhh_c3d4.toml --x c3 --y d4
 ```
 
 By default this reads `outputs/<process>/fit.json`, selects the `xsec` fit if
-present, writes `outputs/<process>/<label>_<x>_<y>_contour.png`, and scans
-each axis over the configured fit range converted back to the scan variable.
-The axis names can be the coupling `name`, MadGraph `parameter`, or
-`fit_name` from the TOML file.
+present, and scans each axis over the configured fit range converted back to
+the scan variable. The axis names can be the coupling `name`, MadGraph
+`parameter`, or `fit_name`.
 
-For HHHH over the wider `c3,d4` plane:
+Useful contour options:
 
 ```bash
 multihiggs contour configs/gg_hhhh_c3d4.toml \
@@ -578,47 +405,13 @@ multihiggs contour configs/gg_hhhh_c3d4.toml \
   --pdf-output outputs/gg_4h/hhhh_c3_d4_contour.pdf
 ```
 
-All configured variables that are not on the axes are fixed at their
-configured `sm_value`, which is zero in the current example configs. Override
-those fixed values with repeatable `--fix name=value` arguments:
-
-```bash
-multihiggs contour configs/gg_tthhh_restricted5_ct_ct2_c3_validation.toml \
-  --x ct --y c3 \
-  --fix ct2=0.25
-```
-
-For histogram fits, select the bin by label and pass the histogram fit JSON:
-
-```bash
-multihiggs contour configs/gg_hhh_c3d4.toml \
-  --input outputs/gg_hhh/hist_fit.json \
-  --label h_pt:bin0 \
-  --x c3 --y d4
-```
-
-Useful plot controls:
-
-- `--points N`: use `N` grid points on each axis.
-- `--x-points N` and `--y-points N`: set axis-specific grid sizes.
-- `--linear`: use a linear color scale instead of the default log scale.
-
-## One-Dimensional Variations
-
-Use `multihiggs variation` to plot a fitted one-dimensional cross-section
-ratio, `sigma(x) / sigma_SM`, for any configured coupling variable:
+Plot a one-dimensional ratio:
 
 ```bash
 multihiggs variation configs/gg_hhhh_c3d4.toml --x c3
 ```
 
-By default this reads `outputs/<process>/fit.json`, selects the `xsec` fit if
-present, writes `outputs/<process>/<label>_<x>_variation.png`, and scans the
-chosen variable over its configured fit range converted back to the scan
-variable. All other configured variables are fixed at their TOML `sm_value`.
-
-Override the fixed non-axis parameters with repeatable `--fix name=value`
-arguments:
+Fix non-axis couplings with repeatable `--fix name=value` arguments:
 
 ```bash
 multihiggs variation configs/gg_hhhh_c3d4.toml \
@@ -630,8 +423,40 @@ multihiggs variation configs/gg_hhhh_c3d4.toml \
   --pdf-output outputs/gg_4h/hhhh_c3_variation_d4_100.pdf
 ```
 
-For fits with multiple labels, select one with `--label`. Use `--log-y` for a
-logarithmic ratio axis.
+For histogram fits, pass the histogram fit JSON and select the bin label:
+
+```bash
+multihiggs contour configs/gg_hhh_c3d4.toml \
+  --input outputs/gg_hhh/hist_fit.json \
+  --label h_pt:bin0 \
+  --x c3 --y d4
+```
+
+## Adapting A Config
+
+Copy a nearby config and edit:
+
+- `[process]`: `name`, `mg5_path`, `model`, `generate`, and `output`
+- `[[couplings]]`: one entry per MadGraph parameter to scan
+- `[scan]`: run number, collider energy, events per point, sort mode, and
+  integration options
+- `[fit]`: `basis`, `term_map` when needed, and `terms`
+- `[[observables]]`: optional LHE histogram definitions
+
+Custom term maps can be defined in the TOML:
+
+```toml
+[term_maps.custom_top]
+description = "Custom top modifier"
+
+[[term_maps.custom_top.variables]]
+source = "CT1"
+name = "YT"
+offset = 1.0
+```
+
+The `source` value is matched against the MadGraph/UFO parameter name first,
+with config names and fit names also accepted for fitted polynomial output.
 
 ## Tests
 

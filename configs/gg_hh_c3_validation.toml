@@ -7,8 +7,8 @@ output = "gg_hh_c3_validation"
 
 [scan]
 run_number = "1"
-energy_tev = 14.0
-nevents = 10000
+energy_tev = 13.6
+nevents = 100
 min_events = 100
 strategy = "chebyshev_lobatto"
 sort = "sm_first"
@@ -30,7 +30,8 @@ fit_offset = 0.0
 sm_value = 0.0
 
 [fit]
-basis = "chebyshev"
+term_map = "mheft_kappa"
+basis = "physical_monomial"
 terms = [
   [0],
   [1],

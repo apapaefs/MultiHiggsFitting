@@ -72,10 +72,12 @@ class ResolvedTermMap:
 BUILTIN_TERM_MAPS: dict[str, TermMap] = {
     "mheft_kappa": TermMap(
         name="mheft_kappa",
-        description="MHEFT deviations rewritten as kappa modifiers",
+        description="MHEFT and loop c3/d4 deviations rewritten as kappa modifiers",
         variables=(
             TermMapVariable(source="D3", name="K3", offset=1.0),
+            TermMapVariable(source="c3", name="K3", offset=1.0),
             TermMapVariable(source="D4", name="K4", offset=1.0),
+            TermMapVariable(source="d4", name="K4", offset=1.0),
             TermMapVariable(source="CT1", name="KT", offset=1.0),
         ),
     ),

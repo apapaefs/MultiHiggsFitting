@@ -39,7 +39,8 @@ fit_offset = 0.0
 sm_value = 0.0
 
 [fit]
-basis = "chebyshev"
+term_map = "mheft_kappa"
+basis = "physical_monomial"
 terms = [
   [0, 0],
   [1, 0],

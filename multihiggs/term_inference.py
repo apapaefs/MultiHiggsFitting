@@ -724,12 +724,12 @@ def project_amplitude_terms(
     terms = set(amplitude_terms)
     if amplitude_basis is None:
         return terms
-    if amplitude_basis == "sm_like_hhh":
-        return project_sm_like_hhh_amplitude_terms(terms, coupling_names)
+    if amplitude_basis in {"sm_like", "sm_like_hhh"}:
+        return project_sm_like_amplitude_terms(terms, coupling_names)
     raise TermInferenceError(f"Unknown amplitude basis {amplitude_basis!r}")
 
 
-def project_sm_like_hhh_amplitude_terms(
+def project_sm_like_amplitude_terms(
     amplitude_terms: Iterable[Power],
     coupling_names: tuple[str, ...],
 ) -> set[Power]:
@@ -746,10 +746,44 @@ def project_sm_like_hhh_amplitude_terms(
         (1, 2, 0),
         (1, 0, 1),
     }
-    allowed_sm_subpowers = {
-        tuple(full_power[sm_position] for _, _, sm_position in present_sm)
-        for full_power in full_allowed_sm_subpowers
+    full_hhhh_subpowers = {
+        (4, 0, 0),
+        (3, 1, 0),
+        (2, 2, 0),
+        (1, 3, 0),
+        (2, 0, 1),
+        (1, 1, 1),
     }
+    full_hh_subpowers = {
+        (2, 0, 0),
+        (1, 1, 0),
+    }
+    hhhh_sm_subpowers = project_sm_subpowers(full_hhhh_subpowers, present_sm)
+    hhh_sm_subpowers = project_sm_subpowers(full_allowed_sm_subpowers, present_sm)
+    hh_sm_subpowers = project_sm_subpowers(full_hh_subpowers, present_sm)
+    pure_sm_subpowers = {
+        tuple(power[index] for _, index, _ in present_sm)
+        for power in amplitude_terms
+        if all(exponent == 0 for index, exponent in enumerate(power) if index not in sm_indices)
+    }
+    hhhh_specific_subpowers = {
+        subpower
+        for subpower in hhhh_sm_subpowers - hhh_sm_subpowers - hh_sm_subpowers
+        if is_projected_specific_subpower(subpower, present_sm)
+    }
+    hhh_specific_subpowers = {
+        subpower
+        for subpower in hhh_sm_subpowers - hh_sm_subpowers
+        if is_projected_specific_subpower(subpower, present_sm)
+    }
+    if pure_sm_subpowers & hhhh_specific_subpowers:
+        allowed_sm_subpowers = hhhh_sm_subpowers
+    elif pure_sm_subpowers & hhh_specific_subpowers:
+        allowed_sm_subpowers = hhh_sm_subpowers
+    elif pure_sm_subpowers & hh_sm_subpowers:
+        allowed_sm_subpowers = hh_sm_subpowers
+    else:
+        allowed_sm_subpowers = hhh_sm_subpowers
     projected: set[Power] = set()
     for power in amplitude_terms:
         has_non_sm_variable = any(
@@ -764,6 +798,28 @@ def project_sm_like_hhh_amplitude_terms(
         if subpower in allowed_sm_subpowers:
             projected.add(power)
     return projected
+
+
+def project_sm_subpowers(
+    full_subpowers: Iterable[tuple[int, int, int]],
+    present_sm: tuple[tuple[str, int, int], ...],
+) -> set[Power]:
+    return {
+        tuple(full_power[sm_position] for _, _, sm_position in present_sm)
+        for full_power in full_subpowers
+    }
+
+
+def is_projected_specific_subpower(
+    subpower: Power,
+    present_sm: tuple[tuple[str, int, int], ...],
+) -> bool:
+    if sum(subpower) >= 2:
+        return True
+    return any(
+        exponent > 0 and name != "KT"
+        for exponent, (name, _, _) in zip(subpower, present_sm)
+    )
 
 
 def format_inferred_terms(

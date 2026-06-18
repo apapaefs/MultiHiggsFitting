@@ -62,7 +62,8 @@ c3 = 0.965926
 d4 = 0.0
 
 [fit]
-basis = "chebyshev"
+term_map = "mheft_kappa"
+basis = "physical_monomial"
 terms = [
   [0, 0],
   [1, 0],

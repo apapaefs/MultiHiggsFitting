@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from .basis import chebyshev_row
+from .basis import design_matrix
 from .config import ObservableConfig, ProjectConfig
 from .contours import format_axis_label, resolve_coupling, safe_filename_piece
 
@@ -150,7 +150,7 @@ def evaluate_observable_bins(
     values = []
     errors = []
     complete_values = complete_parameter_values(config, point)
-    basis_row = chebyshev_row(complete_values, config)
+    basis_row = design_matrix([complete_values], config)[0]
     for record in fit_records:
         coefficients = np.asarray(record["coefficients"], dtype=float)
         covariance = np.asarray(record["covariance"], dtype=float)

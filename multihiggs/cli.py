@@ -101,13 +101,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Also print expanded polynomial coefficients for the selected --term-map",
     )
     fit_parser.add_argument(
+        "--mheft-basis",
+        choices=("sm-like",),
+        help="Use a predefined MHEFT basis shorthand such as sm-like",
+    )
+    fit_parser.add_argument(
         "--physical-basis",
         action="store_true",
         help="Infer a physical_monomial fit basis from the generated process before fitting",
     )
     fit_parser.add_argument(
         "--amplitude-basis",
-        choices=("sm_like_hhh",),
+        choices=("sm_like", "sm_like_hhh"),
         help="Project inferred physical amplitudes onto a named compact amplitude basis before fitting",
     )
 
@@ -216,13 +221,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Also print expanded polynomial powers for the selected --term-map",
     )
     infer_parser.add_argument(
+        "--mheft-basis",
+        choices=("sm-like",),
+        help="Use a predefined MHEFT basis shorthand such as sm-like",
+    )
+    infer_parser.add_argument(
         "--physical-basis",
         action="store_true",
         help="Infer/update terms in the selected --term-map as the physical fit basis",
     )
     infer_parser.add_argument(
         "--amplitude-basis",
-        choices=("sm_like_hhh",),
+        choices=("sm_like", "sm_like_hhh"),
         help="Project inferred physical amplitudes onto a named compact amplitude basis",
     )
 
@@ -248,16 +258,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "hist":
         return command_hist(config, args.output, args.observables, args.run_numbers, args.min_events)
     if args.command == "fit":
+        try:
+            term_map_name, physical_basis, amplitude_basis = resolve_mheft_basis_options(
+                args.mheft_basis,
+                args.term_map,
+                args.physical_basis,
+                args.amplitude_basis,
+            )
+        except ValueError as error:
+            parser.error(str(error))
         return command_fit(
             config,
             args.input,
             args.output,
             args.print_polynomial,
             args.min_events,
-            args.term_map,
+            term_map_name,
             args.expand_term_map,
-            args.physical_basis,
-            args.amplitude_basis,
+            physical_basis,
+            amplitude_basis,
         )
     if args.command == "contour":
         return command_contour(
@@ -302,16 +321,42 @@ def main(argv: list[str] | None = None) -> int:
             args.log_y,
         )
     if args.command == "infer-terms":
+        try:
+            term_map_name, physical_basis, amplitude_basis = resolve_mheft_basis_options(
+                args.mheft_basis,
+                args.term_map,
+                args.physical_basis,
+                args.amplitude_basis,
+            )
+        except ValueError as error:
+            parser.error(str(error))
         return command_infer_terms(
             config,
             args.process_dir,
             not args.no_update_config,
-            args.term_map,
+            term_map_name,
             args.expand_term_map,
-            args.physical_basis,
-            args.amplitude_basis,
+            physical_basis,
+            amplitude_basis,
         )
     raise AssertionError(args.command)
+
+
+def resolve_mheft_basis_options(
+    mheft_basis: str | None,
+    term_map_name: str | None,
+    physical_basis: bool,
+    amplitude_basis: str | None,
+) -> tuple[str | None, bool, str | None]:
+    if mheft_basis is None:
+        return term_map_name, physical_basis, amplitude_basis
+    if mheft_basis != "sm-like":
+        raise ValueError(f"Unsupported --mheft-basis value: {mheft_basis}")
+    if term_map_name not in (None, "mheft_kappa"):
+        raise ValueError("--mheft-basis sm-like requires --term-map mheft_kappa")
+    if amplitude_basis not in (None, "sm_like", "sm_like_hhh"):
+        raise ValueError("--mheft-basis sm-like requires the sm_like amplitude basis")
+    return "mheft_kappa", True, "sm_like"
 
 
 def add_config_command(subparsers, name: str, help_text: str):
