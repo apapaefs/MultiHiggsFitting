@@ -594,16 +594,36 @@ terms = [[0, 0, 0, 0, 0]]
             self.assertEqual(term_map.offsets, (1.0, 0.0, 0.0, 0.0, 0.0))
             self.assertEqual(term_map.mapping_text(), "KT=1+CT1, KZ=KZ, KZZ=KZZ, KW=KW, KWW=KWW")
 
-    def test_vv_ufo_defaults_use_sm_kappa_values(self):
-        parameters = (ROOT / "models" / "heft_loop_sm_restricted5VV" / "parameters.py").read_text(encoding="utf-8")
-        restrict = (ROOT / "models" / "heft_loop_sm_restricted5VV" / "restrict_default.dat").read_text(encoding="utf-8")
+    def test_vv_ufo_sm_defaults_remain_external_under_restrictions(self):
+        model_dir = ROOT / "models" / "heft_loop_sm_restricted5VV"
+        parameters = (model_dir / "parameters.py").read_text(encoding="utf-8")
 
         for name in ("KZ", "KZZ", "KW", "KWW"):
             self.assertRegex(parameters, rf"(?s){name} = Parameter\(name = '{name}',.*?value = 1\.0,", msg=name)
-        self.assertIn("998 1.0000e+00 # KZ", restrict)
-        self.assertIn("999 1.0000e+00 # KZZ", restrict)
-        self.assertIn("991 1.0000e+00 # KW", restrict)
-        self.assertIn("992 1.0000e+00 # KWW", restrict)
+
+        # MadGraph normalizes this sentinel to 1.0 while leaving the parameter
+        # external.  A literal 1.0 in a restriction card would freeze it.
+        vv_expected = {"KZ": 998, "KZZ": 999, "KW": 991, "KWW": 992}
+        base_expected = {
+            "CT1": (993, "1.3000e+00"),
+            "CT2": (994, "1.4000e+00"),
+            "CT3": (995, "1.5000e+00"),
+            "D3": (996, "1.6000e+00"),
+            "D4": (997, "1.7000e+00"),
+        }
+        restriction_cards = [
+            *sorted(model_dir.glob("restrict*.dat")),
+            *sorted(model_dir.glob(".restrict*.dat")),
+        ]
+        self.assertTrue(restriction_cards)
+        for card in restriction_cards:
+            restrict = card.read_text(encoding="utf-8")
+            # Once BSMINPUTS is present, named restrictions must define the
+            # complete external block or MadGraph rejects the import.
+            for name, (lhacode, value) in base_expected.items():
+                self.assertIn(f"    {lhacode} {value} # {name}", restrict, msg=f"{card.name}: {name}")
+            for name, lhacode in vv_expected.items():
+                self.assertIn(f"    {lhacode} 9.999999e-1 # {name}", restrict, msg=f"{card.name}: {name}")
 
     def test_restricted5_tthhh_validation_maps_readable_modifier_names(self):
         config = load_config(ROOT / "configs" / "gg_tthhh_restricted5_ct_ct2_c3_validation.toml")

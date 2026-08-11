@@ -8,7 +8,9 @@ The main use case is loop-induced multi-Higgs production with either:
 
 - the original `loop_sm_c3d4` model, where MadGraph parameters are `c3,d4`;
 - the `heft_loop_sm_restricted5` model, where the MHEFT deviations include
-  `CT1, CT2, CT3, D3, D4`.
+  `CT1, CT2, CT3, D3, D4`;
+- the `heft_loop_sm_restricted5VV` model, which additionally exposes `KZ`,
+  `KZZ`, `KW`, and `KWW` as independent electroweak Higgs-vertex modifiers.
 
 The shipped `c3,d4` configs scan the MadGraph parameters but fit the physical
 kappa variables
@@ -28,6 +30,9 @@ K4 = 1 + D4
 
 Non-SM contact variables such as `CT2` and `CT3` remain explicit fit
 variables.
+
+In `heft_loop_sm_restricted5VV`, `KZ`, `KZZ`, `KW`, and `KWW` multiply the
+`ZZH`, `ZZHH`, `WWH`, and `WWHH` vertices, respectively. Their SM value is 1.
 
 ## Install
 
@@ -80,10 +85,26 @@ checkout:
 ```bash
 ln -s ../../models/loop_sm_c3d4 MG5_aMC_v3_5_15/models/loop_sm_c3d4
 ln -s ../../models/heft_loop_sm_restricted5 MG5_aMC_v3_5_15/models/heft_loop_sm_restricted5
+ln -s ../../models/heft_loop_sm_restricted5VV MG5_aMC_v3_5_15/models/heft_loop_sm_restricted5VV
 ```
 
-The restricted5 model is vendored from
-`https://gitlab.com/apapaefs/multihiggs_loop_sm` at commit `99ba5ee90669`.
+The restricted models are vendored from
+`https://gitlab.com/apapaefs/multihiggs_loop_sm`. The base restricted5 model
+matches commit `99ba5ee90669`; the restricted5VV model matches commit
+`788431390ded`.
+
+Use a normal `import model heft_loop_sm_restricted5VV`. Its four VV modifiers
+then appear in the generated `param_card.dat` at exactly 1 and remain external
+scan parameters. The restriction cards deliberately encode those defaults as
+MadGraph's `9.999999e-1` sentinel, which MadGraph normalizes to 1 without
+freezing the parameter. A literal 1 in a restriction card would make that
+modifier internal.
+
+When a config starts from `model = "heft_loop_sm_restricted5"` and declares
+any of `KZ`, `KZZ`, `KW`, or `KWW` as a coupling parameter, the pipeline
+automatically selects `heft_loop_sm_restricted5VV`. Unspecified VV modifiers
+default to their SM value of 1.
+
 If you are reproducing the old 4H area and prefer the archived model, unpack
 the old tarball instead:
 
